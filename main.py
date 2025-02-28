@@ -6,6 +6,8 @@ from config import TOKEN
 from utils.helpers import load_locale
 from middleware.delay_middleware import DelayMiddleware
 from middleware.premium_middleware import PremiumMiddleware
+from middleware.ban_middleware import BanMiddleware
+
 from database.session import init_db
 
 # Импортируем обработчики
@@ -19,6 +21,7 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 
 dp.middleware.setup(DelayMiddleware())
 dp.middleware.setup(PremiumMiddleware())
+dp.middleware.setup(BanMiddleware())
 
 start.register_handlers_start(dp, LOCALE)
 menu.register_handlers_menu(dp, LOCALE)

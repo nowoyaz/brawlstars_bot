@@ -243,25 +243,35 @@ async def process_report_reason(callback: types.CallbackQuery, locale):
     data = callback.data.split(":")
     if len(data) >= 4:
         announcement_id, reason, announcement_type = int(data[1]), data[2], data[3]
+        # Сохраняем репорт с указанной причиной
         report_announcement(callback.from_user.id, announcement_id, reason)
-        report_text = (
-            f"🚨 <b>Новый репорт!</b>\n"
-            f"Пользователь: <a href='tg://user?id={callback.from_user.id}'>{callback.from_user.full_name}</a>\n"
-            f"🔹 Причина: {reason}\n"
-            f"📌 Объявление ID: {announcement_id}"
-        )
-        await callback.bot.send_message(ADMIN_ID, report_text, parse_mode="HTML")
-        # Попытка удалить сообщение с репортом
+        
+        # Получаем данные репортованного объявления
+        from utils.helpers import get_announcement_by_id
+        announcement = get_announcement_by_id(announcement_id)
+        if announcement:
+            text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
+            # Отправляем админу фото с анкетой и клавиатурой для блокировки/игнорирования
+            await callback.bot.send_photo(
+                ADMIN_ID,
+                photo=announcement["image_id"],
+                caption=text,
+                reply_markup=report_admin_keyboard(locale, announcement["user_id"])
+            )
+        # Пытаемся удалить сообщение с репортом; если его нет, отправляем уведомление
         try:
             await callback.message.delete()
         except Exception:
-            pass
-        # Переход к следующему объявлению
+            await callback.message.bot.send_message(
+                callback.from_user.id,
+                "Объявлений больше нет 😕",
+                reply_markup=inline_main_menu_keyboard(locale)
+            )
+        # После репорта переходим к следующему объявлению, если оно есть
         if announcement_type == "team":
             await process_normal_search_team(callback, locale)
         else:
             await process_normal_search_club(callback, locale)
-
 
 # ----- Фильтрация -----
 

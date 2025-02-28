@@ -2,6 +2,8 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher
 from config import ADMIN_ID
 from keyboards.inline_keyboard import report_reason_keyboard, report_admin_keyboard
+from database.session import SessionLocal
+from database.models import User
 
 async def cmd_report(callback: types.CallbackQuery, locale):
     await callback.answer()
@@ -32,7 +34,7 @@ async def admin_block(callback: types.CallbackQuery, locale):
             user.blocked = True  # Обновляем статус
             session.commit()
         session.close()
-    await callback.message.edit_text("Пользователь заблокирован.")
+    await callback.message.edit_text("Пользователь заблокирован.", reply_markup=None)
 
 async def admin_ignore(callback: types.CallbackQuery, locale):
     await callback.answer("Игнорировано")
