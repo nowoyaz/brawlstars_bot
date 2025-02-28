@@ -20,6 +20,27 @@ async def process_report(callback: types.CallbackQuery, locale):
     await callback.bot.send_message(ADMIN_ID, report_message, reply_markup=report_admin_keyboard(locale))
     await callback.message.edit_text("Репорт отправлен! ✅")
 
+
+async def admin_block(callback: types.CallbackQuery, locale):
+    await callback.answer("Пользователь заблокирован")
+    data = callback.data.split(":")
+    if len(data) >= 2:
+        reported_user_id = int(data[1])
+        session = SessionLocal()
+        user = session.query(User).filter(User.id == reported_user_id).first()
+        if user:
+            user.blocked = True  # Обновляем статус
+            session.commit()
+        session.close()
+    await callback.message.edit_text("Пользователь заблокирован.")
+
+async def admin_ignore(callback: types.CallbackQuery, locale):
+    await callback.answer("Игнорировано")
+    await callback.message.delete()
+
+
 def register_handlers_report(dp: Dispatcher, locale):
     dp.register_callback_query_handler(lambda call: cmd_report(call, locale), lambda c: c.data.startswith("report:default"))
     dp.register_callback_query_handler(lambda call: process_report(call, locale), lambda c: c.data.startswith("report:") and c.data != "report:default")
+    dp.register_callback_query_handler(lambda call: admin_block(call, locale), lambda c: c.data.startswith("admin_block"))
+    dp.register_callback_query_handler(lambda call: admin_ignore(call, locale), lambda c: c.data.startswith("admin_ignore"))

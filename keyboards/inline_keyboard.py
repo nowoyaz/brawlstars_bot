@@ -107,7 +107,8 @@ def report_reason_keyboard(locale, announcement_id, announcement_type):
     ]
     for text, reason in reasons:
         kb.insert(InlineKeyboardButton(text=text, callback_data=f"report_reason:{announcement_id}:{reason}:{announcement_type}"))
-    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
+    # Кнопка "Назад" для репортов:
+    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data=f"back_report:{announcement_id}:{announcement_type}"))
     return kb
 
 # Клавиатура для фильтров поиска
@@ -121,10 +122,10 @@ def search_filters_keyboard(locale, announcement_type):
     )
     return kb
 
-def report_admin_keyboard(locale):
+def report_admin_keyboard(locale, reported_user_id):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(text=locale["admin_block"], callback_data="admin_block"),
+        InlineKeyboardButton(text=locale["admin_block"], callback_data=f"admin_block:{reported_user_id}"),
         InlineKeyboardButton(text=locale["admin_ignore"], callback_data="admin_ignore")
     )
     return kb
