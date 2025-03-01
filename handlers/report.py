@@ -31,11 +31,16 @@ async def admin_block(callback: types.CallbackQuery, locale):
         session = SessionLocal()
         user = session.query(User).filter(User.id == reported_user_id).first()
         if user:
-            user.blocked = True  # Обновляем статус
+            user.blocked = True  # Обновляем статус на заблокирован
             session.commit()
         session.close()
-    await callback.message.edit_text("Пользователь заблокирован.", reply_markup=None)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.bot.send_message(ADMIN_ID, "Пользователь заблокирован.", reply_markup=None)
 
+    
 async def admin_ignore(callback: types.CallbackQuery, locale):
     await callback.answer("Игнорировано")
     await callback.message.delete()

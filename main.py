@@ -19,9 +19,10 @@ LOCALE = load_locale("locale/ru.json")
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot, storage=MemoryStorage())
 
+dp.middleware.setup(BanMiddleware())
 dp.middleware.setup(DelayMiddleware())
 dp.middleware.setup(PremiumMiddleware())
-dp.middleware.setup(BanMiddleware())
+
 
 start.register_handlers_start(dp, LOCALE)
 menu.register_handlers_menu(dp, LOCALE)

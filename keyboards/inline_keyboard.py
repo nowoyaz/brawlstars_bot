@@ -38,11 +38,12 @@ def search_team_menu_keyboard(locale):
     )
     return kb
 
+
 def search_options_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(text=locale["button_normal_search"], callback_data="normal_search_team"),
-        InlineKeyboardButton(text=locale["button_filtered_search"], callback_data="filtered_search_team"),
+        InlineKeyboardButton(text=locale["button_filtered_search"], callback_data="show_filters_team"),
         InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu")
     )
     return kb
@@ -61,7 +62,7 @@ def search_options_club_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(text=locale["button_normal_search"], callback_data="normal_search_club"),
-        InlineKeyboardButton(text=locale["button_filtered_search"], callback_data="filtered_search_club"),
+        InlineKeyboardButton(text=locale["button_filtered_search"], callback_data="show_filters_club"),
         InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu")
     )
     return kb

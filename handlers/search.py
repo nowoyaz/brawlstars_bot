@@ -227,6 +227,17 @@ async def process_favorite(callback: types.CallbackQuery, locale, announcement_t
 
 # ----- Репорт -----
 
+async def process_report_selection(callback: types.CallbackQuery, locale):
+    await callback.answer()
+    data = callback.data.split(":")
+    if len(data) >= 4:
+        announcement_id, reason, announcement_type = int(data[1]), data[2], data[3]
+        # Показываем подтверждающее сообщение с клавиатурой
+        confirm_text = "🤔 Вы уверены, что хотите пожаловаться на этого пользователя? При ложных репортах вы можете быть наказаны. ⚖️"
+        await callback.message.edit_text(confirm_text, reply_markup=report_confirmation_keyboard(announcement_id, announcement_type, reason))
+
+
+
 async def process_report(callback: types.CallbackQuery, locale, announcement_type: str):
     await callback.answer()
     data = callback.data.split(":")
@@ -238,16 +249,73 @@ async def process_report(callback: types.CallbackQuery, locale, announcement_typ
         except Exception:
             await callback.message.edit_text(locale["report_text"], reply_markup=report_reason_keyboard(locale, announcement_id, announcement_type))
 
+async def cancel_report(callback: types.CallbackQuery, locale):
+    await callback.answer("Отменено")
+    data = callback.data.split(":")
+    if len(data) >= 3:
+        announcement_id = int(data[1])
+        announcement_type = data[2]
+        from utils.helpers import get_announcement_by_id
+        announcement = get_announcement_by_id(announcement_id)
+        if announcement:
+            count = get_announcements_count(announcement_type, callback.from_user.id)
+            has_next = count > 1
+            text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await callback.message.bot.send_photo(
+                callback.from_user.id,
+                photo=announcement["image_id"],
+                caption=text,
+                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, announcement_type)
+            )
+        else:
+            await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
+
+
+async def confirm_report(callback: types.CallbackQuery, locale):
+    await callback.answer()
+    data = callback.data.split(":")
+    if len(data) >= 5:
+        announcement_id, reason, announcement_type, confirmation = int(data[1]), data[2], data[3], data[4]
+        # Если пользователь нажал "Да"
+        if confirmation == "yes":
+            report_announcement(callback.from_user.id, announcement_id, reason)
+            # Получаем данные репортованного объявления
+            from utils.helpers import get_announcement_by_id
+            announcement = get_announcement_by_id(announcement_id)
+            if announcement:
+                text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}\nПричина: {reason}"
+                await callback.bot.send_photo(
+                    ADMIN_ID,
+                    photo=announcement["image_id"],
+                    caption=text,
+                    reply_markup=report_admin_keyboard(locale, announcement["user_id"], callback.from_user.id)
+                )
+        # После подтверждения удаляем сообщение и переходим к следующему объявлению
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        if announcement_type == "team":
+            await process_normal_search_team(callback, locale)
+        else:
+            await process_normal_search_club(callback, locale)
+
+
+
 async def process_report_reason(callback: types.CallbackQuery, locale):
     await callback.answer()
     data = callback.data.split(":")
     if len(data) >= 4:
         announcement_id, reason, announcement_type = int(data[1]), data[2], data[3]
-        # Сохраняем репорт с указанной причиной
+        # Сохраняем репорт с выбранной причиной
         report_announcement(callback.from_user.id, announcement_id, reason)
         
         # Получаем данные репортованного объявления
-        from utils.helpers import get_announcement_by_id
+        from utils.helpers import get_announcement_by_id, get_next_announcement, get_announcements_count
         announcement = get_announcement_by_id(announcement_id)
         if announcement:
             text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
@@ -258,36 +326,59 @@ async def process_report_reason(callback: types.CallbackQuery, locale):
                 caption=text,
                 reply_markup=report_admin_keyboard(locale, announcement["user_id"])
             )
-        # Пытаемся удалить сообщение с репортом; если его нет, отправляем уведомление
+        # Пытаемся удалить сообщение с репортом у пользователя
         try:
             await callback.message.delete()
         except Exception:
             await callback.message.bot.send_message(
                 callback.from_user.id,
-                "Объявлений больше нет 😕",
+                "Список пуст",
                 reply_markup=inline_main_menu_keyboard(locale)
             )
-        # После репорта переходим к следующему объявлению, если оно есть
+        # Проверяем наличие следующего объявления
         if announcement_type == "team":
-            await process_normal_search_team(callback, locale)
+            next_ann = get_next_announcement("team", callback.from_user.id)
+            if next_ann:
+                await process_normal_search_team(callback, locale)
+            else:
+                await callback.message.bot.send_message(
+                    callback.from_user.id,
+                    "Список пуст",
+                    reply_markup=inline_main_menu_keyboard(locale)
+                )
         else:
-            await process_normal_search_club(callback, locale)
+            next_ann = get_next_announcement("club", callback.from_user.id)
+            if next_ann:
+                await process_normal_search_club(callback, locale)
+            else:
+                await callback.message.bot.send_message(
+                    callback.from_user.id,
+                    "Список пуст",
+                    reply_markup=inline_main_menu_keyboard(locale)
+                )
 
 # ----- Фильтрация -----
 
 async def process_filtered_search(callback: types.CallbackQuery, locale, announcement_type: str):
     await callback.answer()
+    # Ожидается, что callback.data имеет формат "filtered_search_<announcement_type>_<order>"
     data = callback.data.split("_")
-    if len(data) >= 4:
-        order = data[3]
-        announcement = get_filtered_announcement(announcement_type, callback.from_user.id, order=order)
+    if len(data) >= 3:
+        order = data[2]  # Например, "new", "old" или "premium"
+        announcement_list = get_filtered_announcement(announcement_type, callback.from_user.id, order)
     else:
-        announcement = None
-    if announcement:
+        announcement_list = []
+    if announcement_list:
+        # Возьмём первое объявление из списка (можно расширить логику для циклического перебора)
+        from utils.helpers import get_announcement_by_id
+        announcement = get_announcement_by_id(announcement_list[0])
         text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
-        count = get_announcements_count(announcement_type, callback.from_user.id)
-        has_next = count > 1
-        await callback.message.delete()
+        # Если список содержит больше одного элемента, кнопка "Дальше" появится
+        has_next = len(announcement_list) > 1
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
@@ -296,6 +387,23 @@ async def process_filtered_search(callback: types.CallbackQuery, locale, announc
         )
     else:
         await callback.message.edit_text("Объявлений по выбранному фильтру нет 😕", reply_markup=inline_main_menu_keyboard(locale))
+
+async def show_filters_team(callback: types.CallbackQuery, locale):
+    await callback.answer()
+    # Показываем список фильтров для команды
+    await callback.message.edit_text("Выберите фильтр для поиска команды:", reply_markup=search_filters_keyboard(locale, "team"))
+
+async def show_filters_club(callback: types.CallbackQuery, locale):
+    await callback.answer()
+    # Показываем список фильтров для клуба
+    await callback.message.edit_text("Выберите фильтр для поиска клуба:", reply_markup=search_filters_keyboard(locale, "club"))
+
+
+
+
+
+
+
 # ----- Кнопка "Назад" -----
 
 async def process_back_to_search_menu(callback: types.CallbackQuery, locale):
@@ -364,3 +472,12 @@ def register_handlers_search(dp: Dispatcher, locale):
 
     dp.register_callback_query_handler(lambda call, state: process_next_team(call, locale, state), lambda c: c.data == "next:team")
     dp.register_callback_query_handler(lambda call, state: process_next_club(call, locale, state), lambda c: c.data == "next:club")
+    
+    dp.register_callback_query_handler(lambda call: show_filters_team(call, locale), lambda c: c.data == "show_filters_team")
+    dp.register_callback_query_handler(lambda call: show_filters_club(call, locale), lambda c: c.data == "show_filters_club")
+
+    dp.register_callback_query_handler(lambda call: process_report_selection(call, locale), lambda c: c.data.startswith("report_reason:"))
+
+    dp.register_callback_query_handler(lambda call: confirm_report(call, locale), lambda c: c.data.startswith("confirm_report:"))
+
+    dp.register_callback_query_handler(lambda call: cancel_report(call, locale), lambda c: c.data.startswith("cancel_report:"))

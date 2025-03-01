@@ -82,7 +82,7 @@ def report_announcement(user_id: int, announcement_id: int, reason: str):
         report = Report(
             reporter_id=user_id,
             announcement_id=announcement_id,
-            reason=reason,  # передаём причину
+            reason=reason,  # Передаём выбранную причину
             created_at=datetime.datetime.utcnow()
         )
         session.add(report)
@@ -167,29 +167,36 @@ def get_announcements_list(announcement_type: str, current_user_id: int) -> list
     session.close()
     return [ann.id for ann in announcements]
 
-def get_filtered_announcement(announcement_type: str, current_user_id: int, order: str = "new") -> dict:
+def get_filtered_announcement(announcement_type: str, current_user_id: int, order: str = "new") -> list:
+    """
+    Возвращает список ID объявлений для заданной категории, отсортированных по порядку:
+      - "new": от новых к старым
+      - "old": от старых к новым
+      - "premium": сначала объявления от премиум-пользователей, потом обычные, каждый порядок по дате (от новых к старым)
+    Исключает объявления текущего пользователя и объявления от пользователей, которых он репортил.
+    """
     session = SessionLocal()
-    query = session.query(Announcement).join(User, Announcement.user_id == User.id).filter(
+    # Получаем список id пользователей, чьи объявления уже репортировал текущий пользователь
+    reported_user_ids = session.query(Announcement.user_id)\
+        .join(Report, Report.announcement_id == Announcement.id)\
+        .filter(Report.reporter_id == current_user_id).distinct().all()
+    reported_user_ids = [uid for (uid,) in reported_user_ids]
+    query = session.query(Announcement).filter(
         Announcement.announcement_type == announcement_type,
-        Announcement.user_id != current_user_id
+        Announcement.user_id != current_user_id,
+        ~Announcement.user_id.in_(reported_user_ids)
     )
     if order == "new":
         query = query.order_by(Announcement.created_at.desc())
     elif order == "old":
         query = query.order_by(Announcement.created_at.asc())
     elif order == "premium":
-        query = query.order_by(User.is_premium.desc(), Announcement.created_at.desc())
-    announcement = query.first()
+        # Предполагаем, что таблица User содержит флаг is_premium
+        from database.models import User
+        query = query.join(User, Announcement.user_id == User.id).order_by(User.is_premium.desc(), Announcement.created_at.desc())
+    announcements = query.all()
     session.close()
-    if announcement:
-        return {
-            "id": announcement.id,
-            "user_id": announcement.user_id,
-            "image_id": announcement.image_id,
-            "description": announcement.description,
-            "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
-        }
-    return None
+    return [ann.id for ann in announcements]
 
 def get_announcement_by_id(announcement_id: int) -> dict:
     session = SessionLocal()
