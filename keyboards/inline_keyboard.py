@@ -83,22 +83,40 @@ def report_confirmation_keyboard(announcement_id, announcement_type, reason):
     return kb
 
 
+def language_keyboard(locale):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_language:ru"),
+        InlineKeyboardButton(text="🇬🇧 Английский", callback_data="set_language:eng")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")
+    )
+    return kb
 
 
-# Клавиатура для отображения найденного объявления
+
 def announcement_keyboard(locale, announcement_id, user_id, has_next, announcement_type):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(text=locale["button_write"], url=f"tg://user?id={user_id}"),
         InlineKeyboardButton(text=locale["button_report"], callback_data=f"report:{announcement_id}:{announcement_type}")
     )
+    # Для обычного объявления кнопка "Избранное" добавляет элемент,
+    # а для режима favorites – при нажатии удаляет его.
     kb.add(
-        InlineKeyboardButton(text=locale["button_favorite"], callback_data=f"favorite:{announcement_id}:{announcement_type}")
+        InlineKeyboardButton(text=locale["button_unfavorites"], callback_data=f"favorite:{announcement_id}:{announcement_type}")
     )
     if has_next:
-        kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data=f"next:{announcement_type}"))
+        if announcement_type == "favorites":
+            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data="next:favorites"))
+        else:
+            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data=f"next:{announcement_type}"))
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
     return kb
+
+
 
 # Клавиатура для просмотра объявления пользователя
 def announcement_view_keyboard(locale):
@@ -165,4 +183,35 @@ def action_announcement_keyboard(locale):
 def preview_announcement_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="preview_back"))
+    return kb
+
+
+from config import SUPPORT_LINK
+
+def additional_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale["button_language"], callback_data="language"),
+        InlineKeyboardButton(text=locale["button_announcement_count"], callback_data="announcement_count")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_favorites"], callback_data="favorites"),
+        InlineKeyboardButton(text=locale["button_referral_program"], callback_data="referral")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_support"], url=SUPPORT_LINK)
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")
+    )
+    return kb
+
+
+
+def gift_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale["button_receive_gift"], callback_data="receive_gift"),
+        InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")
+    )
     return kb

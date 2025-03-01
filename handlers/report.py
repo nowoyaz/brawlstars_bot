@@ -4,13 +4,17 @@ from config import ADMIN_ID
 from keyboards.inline_keyboard import report_reason_keyboard, report_admin_keyboard
 from database.session import SessionLocal
 from database.models import User
+from utils.helpers import get_user_language
+
 
 async def cmd_report(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     text = locale["report_text"]
     await callback.message.edit_text(text, reply_markup=report_reason_keyboard(locale, 0, "default"))
 
 async def process_report(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     reason = callback.data.split(":", 1)[1]
     report_message = (
@@ -24,6 +28,7 @@ async def process_report(callback: types.CallbackQuery, locale):
 
 
 async def admin_block(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer("Пользователь заблокирован")
     data = callback.data.split(":")
     if len(data) >= 2:
@@ -41,6 +46,7 @@ async def admin_block(callback: types.CallbackQuery, locale):
     await callback.message.bot.send_message(ADMIN_ID, "Пользователь заблокирован.", reply_markup=None)
 
 async def admin_block_reporter(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer("Репортировавший заблокирован")
     data = callback.data.split(":")
     if len(data) >= 2:
@@ -58,6 +64,7 @@ async def admin_block_reporter(callback: types.CallbackQuery, locale):
     await callback.message.bot.send_message(ADMIN_ID, "Репортировавший заблокирован.", reply_markup=None)
 
 async def admin_ignore(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer("Игнорировано")
     try:
         await callback.message.delete()

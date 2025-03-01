@@ -1,0 +1,99 @@
+{
+  "start_text": "👋 Hi! I'm a bot for finding teams and clubs in Brawl Stars.\nPress \"Start\" to learn about all my features. 🔮",
+  "button_start": "🚀 Start",
+  "button_channel": "📣 Our Channel",
+  "menu_text": "💬 Choose one of the sections:",
+  
+  "button_search_team": "🔍 Search Team",
+  "button_search_club": "🔍 Search Club",
+  "button_crystals": "💎 Crystals",
+  "button_premium": "💫 Premium",
+  "button_profile": "👤 Profile",
+  "button_additional": "⚙️ Additional",
+  "button_gift": "🎁 Gift",
+  
+  "search_team_menu_text": "📋 Choose an option for team:",
+  "search_club_menu_text": "📋 Choose an option for club:",
+  "button_search": "🔎 Search",
+  "button_my_announcement": "📄 My Announcement",
+  "button_back": "🔙 Back",
+  
+  "search_options_text": "🤔 Choose a search method:",
+  "button_normal_search": "🆗 Normal",
+  "button_filtered_search": "🔄 With Filters",
+  "button_okay": "👌 OK",
+  
+  "normal_search_advice_text": "💡 Tip:\nIf you notice any rule violations, press \"⚠️ Report\". Thanks!",
+  
+  "no_announcements": "😕 No announcements",
+  "button_write": "💬 Write",
+  "button_report": "⚠️ Report",
+  "button_favorite": "💖 Favorite",
+  "button_next": "⏭ Next",
+  
+  "report_text": "⬆️ What is the violation in this announcement?",
+  "report_reason_ad": "📢 Advertisement",
+  "report_reason_links": "🔗 External Links",
+  "report_reason_bad_language": "🤬 Profanity",
+  "report_reason_18+": "🔞 18+ Content",
+  "report_reason_other": "❓ Other",
+  "admin_block": "🔒 Block",
+  "admin_ignore": "✅ Do Not Block",
+  
+  "premium_text": "🔥 Get the most out of the bot with Premium!\n\n⭐️ Early access to new features – try them first.\n\n📽 Upload videos/GIFs in announcements – attract more teammates!\n\n🎯 Two active announcements – search for both team and club simultaneously.\n\n🏆 Premium Badge – stand out among other players.\n\n⚡️ Faster bot performance.\n\n🍭 Lifetime subscription!\n\nCost: 500 crystals\nYou have {0} crystals.",
+  "button_buy_premium": "💳 Buy Premium",
+  "premium_success": "✅ Congratulations! Premium activated.",
+  "premium_fail": "❌ Not enough crystals. You have {crystals}.",
+  
+  "crystals_text": "📊 Balance: {crystals} 💎\nID: `{user_id}`",
+  "button_send_crystals": "💸 Send",
+  
+  "prompt_recipient": "📥 Enter recipient ID:",
+  "prompt_amount": "💰 Enter number of crystals:",
+  "error_invalid_recipient": "❌ Invalid ID. Please enter a numeric recipient ID.",
+  "error_invalid_amount": "❌ Please enter a numeric value for the number of crystals.",
+  "error_insufficient_crystals": "❌ Error: not enough crystals. Your balance: {crystals}.",
+  "transfer_success": "✅ Crystals successfully sent: {amount} to recipient {recipient}.",
+  "transfer_error": "❌ Error transferring crystals: {error}.",
+  "transfer_notification": "✅ You received {amount} crystals from user {sender}.",
+  
+  "no_announcement_create_prompt": "📄 You have no announcement yet. Send a photo to create one.",
+  "button_create_new": "🆕 Create New",
+  
+  "ann_send_photo": "📸 Send a photo for your announcement:",
+  "ann_photo_invalid": "❌ Please send a photo.",
+  "ann_send_desc": "📝 Send the announcement description (min. 20 characters):",
+  "ann_desc_short": "❌ Description too short, at least 20 characters required, you have {count}.",
+  "ann_choose_action": "⚙️ Choose an action:",
+  "ann_preview": "🔍 Here's how your announcement will look:",
+  "ann_cancelled": "❌ Announcement creation cancelled.",
+  "ann_created_success": "✅ Your announcement has been created and is now searchable!",
+  
+  "filter_new": "📅 New",
+  "filter_old": "📅 Old",
+  "filter_premium": "⭐ Premium",
+  
+  "button_publish": "📝 Publish",
+  "button_preview": "👁‍🗨 Preview",
+  "button_cancel": "🔙 Back",
+  
+  "button_normal_search": "🆗 Normal",
+  "button_filtered_search": "🔄 With Filters",
+  
+  "gift_text": "🎁 Receive a gift every 2 hours!",
+  "button_gift": "🎁 Gift",
+  "button_receive_gift": "🎁 Claim",
+  "gift_time_error": "⌛️ You can claim your gift in {minutes} min {seconds} sec",
+  "gift_success": "🎉 You received a gift: {amount} crystals!",
+  
+  "additional_text": "⚙️ Additional: choose an option",
+  "button_language": "🌐 Language",
+  "button_announcement_count": "📊 Announcement Count",
+  "button_favorites": "💖 Favorites",
+  "button_unfavorites": "❌ Remove from Favorites",
+  "button_referral_program": "🤝 Referral Program",
+  "announcement_count_text": "📊 Announcements:\nTeam: {team}\nClub: {club}\nTotal: {total}",
+  "button_support": "🛠 Support",
+  
+  "referral_text": "🎁 Earn 20 crystals for inviting a user!\n\nYour referral link:\n{referral_link}\n\nReferrals: {count}"
+}

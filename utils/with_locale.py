@@ -11,7 +11,7 @@ def get_user_language(user_id: int) -> str:
     session = SessionLocal()
     user = session.query(User).filter(User.id == user_id).first()
     session.close()
-    return load_locale('locale/' + f"{user.language if user and user.language else 'ru'}"+'.json')
+    return user.language if user and user.language else "ru"
 
 
 def get_next_announcement(announcement_type: str, current_user_id: int) -> dict:

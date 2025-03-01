@@ -1,7 +1,7 @@
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import get_user_crystals, process_crystal_transfer
+from utils.helpers import get_user_crystals, process_crystal_transfer, get_user_language
 from keyboards.inline_keyboard import inline_main_menu_keyboard, cancel_keyboard
 
 # FSM для отправки кристаллов
@@ -11,6 +11,7 @@ class SendCrystalsStates(StatesGroup):
 
 # Обработчик показа меню кристаллов
 async def cmd_crystals(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     crystals = get_user_crystals(callback.from_user.id)
     user_id = callback.from_user.id
@@ -25,6 +26,7 @@ async def cmd_crystals(callback: types.CallbackQuery, locale):
 
 # Обработчик кнопки "Отправить кристаллы" – запускает FSM
 async def process_send_crystals(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     # Отправляем сообщение с запросом ID получателя, добавляем клавиатуру "Назад"
     await callback.message.edit_text(locale["prompt_recipient"], reply_markup=cancel_keyboard(locale))
@@ -32,12 +34,14 @@ async def process_send_crystals(callback: types.CallbackQuery, locale, state: FS
 
 # Обработчик для отмены FSM (кнопка "Назад")
 async def cancel_send_crystals(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer("Отменено")
     # Завершаем FSM и возвращаем в главное меню
     await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
 
 # Обработчик для ввода ID получателя
 async def process_recipient(message: types.Message, locale, state: FSMContext):
+    locale = get_user_language(message.from_user.id)
     recipient_text = message.text.strip()
     if not recipient_text.isdigit():
         await message.answer(locale["error_invalid_recipient"])
@@ -50,6 +54,7 @@ async def process_recipient(message: types.Message, locale, state: FSMContext):
 
 # Обработчик для ввода количества кристаллов
 async def process_amount(message: types.Message, locale, state: FSMContext):
+    locale = get_user_language(message.from_user.id)
     try:
         amount = int(message.text.strip())
     except ValueError:
@@ -75,6 +80,7 @@ async def process_amount(message: types.Message, locale, state: FSMContext):
 
 # Обработчик для кнопки "Назад" из меню кристаллов
 async def process_back_to_main(callback: types.CallbackQuery, locale):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
 

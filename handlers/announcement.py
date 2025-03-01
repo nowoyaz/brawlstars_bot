@@ -3,8 +3,9 @@ from datetime import datetime
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import save_announcement
+from utils.helpers import save_announcement, get_user_language
 from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard
+
 logger = logging.getLogger(__name__)
 
 class AnnouncementStates(StatesGroup):
@@ -14,12 +15,14 @@ class AnnouncementStates(StatesGroup):
     waiting_in_preview = State()
 
 async def cmd_create_announcement(message: types.Message, announcement_type: str, locale, state: FSMContext):
+    locale = get_user_language(message.from_user.id)
     logger.info("Начало создания объявления: type=%s, user=%s", announcement_type, message.from_user.id)
     await state.update_data(announcement_type=announcement_type)
     await message.answer(locale["ann_send_photo"])
     await AnnouncementStates.waiting_for_photo.set()
 
 async def process_photo(message: types.Message, locale, state: FSMContext):
+    locale = get_user_language(message.from_user.id)
     logger.info("Получено фото от user=%s", message.from_user.id)
     if not message.photo:
         await message.answer(locale["ann_photo_invalid"])
@@ -31,6 +34,7 @@ async def process_photo(message: types.Message, locale, state: FSMContext):
     await AnnouncementStates.waiting_for_description.set()
 
 async def process_description(message: types.Message, locale, state: FSMContext):
+    locale = get_user_language(message.from_user.id)
     logger.info("Получено описание от user=%s", message.from_user.id)
     description = message.text
     if len(description) < 20:
@@ -41,6 +45,7 @@ async def process_description(message: types.Message, locale, state: FSMContext)
     await AnnouncementStates.waiting_for_action.set()
 
 async def action_publish(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     data = await state.get_data()
     announcement_type = data.get("announcement_type")
@@ -57,6 +62,7 @@ async def action_publish(callback: types.CallbackQuery, locale, state: FSMContex
     await state.finish()
 
 async def action_preview(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     data = await state.get_data()
     photo_id = data.get("photo_id")
@@ -73,6 +79,7 @@ async def action_preview(callback: types.CallbackQuery, locale, state: FSMContex
     await AnnouncementStates.waiting_in_preview.set()
 
 async def preview_back(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer()
     await callback.message.delete()
     await callback.message.bot.send_message(
@@ -83,6 +90,7 @@ async def preview_back(callback: types.CallbackQuery, locale, state: FSMContext)
     await AnnouncementStates.waiting_for_action.set()
 
 async def action_cancel(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
     await callback.answer("Создание объявления отменено")
     await state.finish()
     await callback.message.edit_text(locale["ann_cancelled"], reply_markup=inline_main_menu_keyboard(locale))
