@@ -89,6 +89,16 @@ def report_announcement(user_id: int, announcement_id: int, reason: str):
         session.commit()
     session.close()
 
+def ensure_user_exists(user_id, username):
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = User(id=user_id, username=username, crystals=1000, created_at=datetime.datetime.utcnow())
+        session.add(user)
+        session.commit()
+    session.close()
+
+
 
 def add_favorite(user_id: int, announcement_id: int):
     session = SessionLocal()
@@ -112,6 +122,8 @@ def get_announcement_by_id(announcement_id: int) -> dict:
             "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
         }
     return None
+
+
 
 def process_premium_purchase(user_id):
     session = SessionLocal()

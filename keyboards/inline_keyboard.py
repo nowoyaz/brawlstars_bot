@@ -73,6 +73,18 @@ def confirmation_keyboard(locale, suffix="team"):
     kb.add(InlineKeyboardButton(text=locale["button_okay"], callback_data=f"confirm_normal_search_{suffix}"))
     return kb
 
+
+def report_confirmation_keyboard(announcement_id, announcement_type, reason):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text="Да", callback_data=f"confirm_report:{announcement_id}:{reason}:{announcement_type}:yes"),
+        InlineKeyboardButton(text="Нет", callback_data=f"cancel_report:{announcement_id}:{announcement_type}")
+    )
+    return kb
+
+
+
+
 # Клавиатура для отображения найденного объявления
 def announcement_keyboard(locale, announcement_id, user_id, has_next, announcement_type):
     kb = InlineKeyboardMarkup(row_width=2)
@@ -107,10 +119,11 @@ def report_reason_keyboard(locale, announcement_id, announcement_type):
         (locale["report_reason_other"], "other")
     ]
     for text, reason in reasons:
-        kb.insert(InlineKeyboardButton(text=text, callback_data=f"report_reason:{announcement_id}:{reason}:{announcement_type}"))
-    # Кнопка "Назад" для репортов:
+        kb.insert(InlineKeyboardButton(text=text, callback_data=f"confirm_report_selection:{announcement_id}:{reason}:{announcement_type}"))
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data=f"back_report:{announcement_id}:{announcement_type}"))
     return kb
+
+
 
 # Клавиатура для фильтров поиска
 def search_filters_keyboard(locale, announcement_type):
@@ -123,13 +136,22 @@ def search_filters_keyboard(locale, announcement_type):
     )
     return kb
 
-def report_admin_keyboard(locale, reported_user_id):
+def report_admin_keyboard(locale, reported_user_id, reporter_id):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(text=locale["admin_block"], callback_data=f"admin_block:{reported_user_id}"),
         InlineKeyboardButton(text=locale["admin_ignore"], callback_data="admin_ignore")
     )
+    kb.add(
+        InlineKeyboardButton(text="Блокировать жалобщика", callback_data=f"admin_block_reporter:{reporter_id}")
+    )
     return kb
+
+def cancel_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="cancel_send_crystals"))
+    return kb
+
 
 
 def action_announcement_keyboard(locale):

@@ -3,11 +3,14 @@ from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher.storage import FSMContext
 from keyboards.inline_keyboard import start_keyboard, inline_main_menu_keyboard
 
+
 async def cmd_start(message: types.Message, locale, state: FSMContext):
-    # Завершаем все активные состояния
+    from utils.helpers import ensure_user_exists
+    ensure_user_exists(message.from_user.id, message.from_user.username or message.from_user.full_name)
     await state.finish()
     text = locale["start_text"]
     await message.answer(text, reply_markup=start_keyboard(locale))
+
 
 async def process_start_callback(callback: types.CallbackQuery, locale):
     await callback.answer()

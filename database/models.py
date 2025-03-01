@@ -9,7 +9,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, unique=True, index=True)
     username = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
-    crystals = Column(Integer, default=100)
+    crystals = Column(Integer, default=5000)
     blocked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

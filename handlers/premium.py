@@ -1,12 +1,16 @@
 from aiogram import types
 from aiogram.dispatcher import Dispatcher
-from utils.helpers import process_premium_purchase, check_user_crystals, get_user_crystals
-from config import ADMIN_ID
+from utils.helpers import process_premium_purchase, get_user_crystals
+# Для данного примера предполагается, что функция process_premium_purchase обновляет премиум статус и списывает 500 кристаллов
 
 async def cmd_premium(callback: types.CallbackQuery, locale):
     await callback.answer()
-    text = locale["premium_text"].format(get_user_crystals(callback.from_user.id))
-    await callback.message.edit_text(text, reply_markup=None)
+    user_crystals = get_user_crystals(callback.from_user.id)
+    # Форматируем текст премиума с количеством кристаллов пользователя
+    text = locale["premium_text"].format(user_crystals)
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton(text=locale["button_buy_premium"], callback_data="buy_premium"))
+    await callback.message.edit_text(text, reply_markup=kb)
 
 async def cmd_buy_premium(callback: types.CallbackQuery, locale):
     await callback.answer()

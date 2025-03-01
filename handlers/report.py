@@ -31,7 +31,7 @@ async def admin_block(callback: types.CallbackQuery, locale):
         session = SessionLocal()
         user = session.query(User).filter(User.id == reported_user_id).first()
         if user:
-            user.blocked = True  # Обновляем статус на заблокирован
+            user.blocked = True
             session.commit()
         session.close()
     try:
@@ -40,14 +40,34 @@ async def admin_block(callback: types.CallbackQuery, locale):
         pass
     await callback.message.bot.send_message(ADMIN_ID, "Пользователь заблокирован.", reply_markup=None)
 
-    
+async def admin_block_reporter(callback: types.CallbackQuery, locale):
+    await callback.answer("Репортировавший заблокирован")
+    data = callback.data.split(":")
+    if len(data) >= 2:
+        reporter_id = int(data[1])
+        session = SessionLocal()
+        user = session.query(User).filter(User.id == reporter_id).first()
+        if user:
+            user.blocked = True
+            session.commit()
+        session.close()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.bot.send_message(ADMIN_ID, "Репортировавший заблокирован.", reply_markup=None)
+
 async def admin_ignore(callback: types.CallbackQuery, locale):
     await callback.answer("Игнорировано")
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
 
 def register_handlers_report(dp: Dispatcher, locale):
     dp.register_callback_query_handler(lambda call: cmd_report(call, locale), lambda c: c.data.startswith("report:default"))
     dp.register_callback_query_handler(lambda call: process_report(call, locale), lambda c: c.data.startswith("report:") and c.data != "report:default")
     dp.register_callback_query_handler(lambda call: admin_block(call, locale), lambda c: c.data.startswith("admin_block"))
+    dp.register_callback_query_handler(lambda call: admin_block_reporter(call, locale), lambda c: c.data.startswith("admin_block_reporter:"))
     dp.register_callback_query_handler(lambda call: admin_ignore(call, locale), lambda c: c.data.startswith("admin_ignore"))
