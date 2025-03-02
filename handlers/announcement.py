@@ -4,13 +4,14 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from utils.helpers import save_announcement, get_user_language
-from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard
+from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard
 
 logger = logging.getLogger(__name__)
 
 class AnnouncementStates(StatesGroup):
     waiting_for_photo = State()
     waiting_for_description = State()
+    waiting_for_keyword = State()
     waiting_for_action = State()
     waiting_in_preview = State()
 
@@ -41,7 +42,20 @@ async def process_description(message: types.Message, locale, state: FSMContext)
         await message.answer(locale["ann_desc_short"].format(count=len(description)))
         return
     await state.update_data(description=description)
-    await message.answer(locale["ann_choose_action"], reply_markup=action_announcement_keyboard(locale))
+    
+    await message.answer(locale["ann_select_keyword"], reply_markup=keyword_selection_keyboard(locale))
+    await AnnouncementStates.waiting_for_keyword.set()
+
+async def process_keyword(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    keyword = None
+    if callback.data != "skip_keyword":
+        keyword = callback.data.replace("keyword_", "")
+        
+    await state.update_data(keyword=keyword)
+    await callback.message.edit_text(locale["ann_choose_action"], reply_markup=action_announcement_keyboard(locale))
     await AnnouncementStates.waiting_for_action.set()
 
 async def action_publish(callback: types.CallbackQuery, locale, state: FSMContext):
@@ -51,12 +65,14 @@ async def action_publish(callback: types.CallbackQuery, locale, state: FSMContex
     announcement_type = data.get("announcement_type")
     photo_id = data.get("photo_id")
     description = data.get("description")
+    keyword = data.get("keyword")
     logger.info("Публикация объявления от user=%s", callback.from_user.id)
     save_announcement(
         user_id=callback.from_user.id,
         announcement_type=announcement_type,
         image_id=photo_id,
-        description=description
+        description=description,
+        keyword=keyword
     )
     await callback.message.edit_text(locale["ann_created_success"], reply_markup=inline_main_menu_keyboard(locale))
     await state.finish()
@@ -67,8 +83,15 @@ async def action_preview(callback: types.CallbackQuery, locale, state: FSMContex
     data = await state.get_data()
     photo_id = data.get("photo_id")
     description = data.get("description")
+    keyword = data.get("keyword")
     preview_date = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-    preview_text = f"<b>{description}</b>\n\n🕒 {preview_date}"
+    
+    keyword_text = ""
+    if keyword:
+        keyword_display = locale.get(f"keyword_{keyword}", keyword)
+        keyword_text = "\n" + locale["keyword_label"].format(keyword=keyword_display)
+    
+    preview_text = f"<b>{description}</b>{keyword_text}\n\n🕒 {preview_date}"
     await callback.message.delete()
     await callback.message.bot.send_photo(
         chat_id=callback.from_user.id,
@@ -114,6 +137,11 @@ def register_announcement_handlers(dp: Dispatcher, locale):
     dp.register_message_handler(
         lambda message, state: process_description(message, locale, state),
         state=AnnouncementStates.waiting_for_description
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_keyword(call, locale, state),
+        lambda c: c.data.startswith("keyword_") or c.data == "skip_keyword",
+        state=AnnouncementStates.waiting_for_keyword
     )
     dp.register_callback_query_handler(
         lambda call, state: action_publish(call, locale, state),

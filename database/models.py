@@ -37,6 +37,7 @@ class Announcement(Base):
     media_id = Column(String, nullable=True)
     media_type = Column(String, nullable=True)
     description = Column(Text, nullable=False)
+    keyword = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     

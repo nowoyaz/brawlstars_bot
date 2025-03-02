@@ -103,16 +103,23 @@ def announcement_keyboard(locale, announcement_id, user_id, has_next, announceme
         InlineKeyboardButton(text=locale["button_write"], url=f"tg://user?id={user_id}"),
         InlineKeyboardButton(text=locale["button_report"], callback_data=f"report:{announcement_id}:{announcement_type}")
     )
-    # Для обычного объявления кнопка "Избранное" добавляет элемент,
-    # а для режима favorites – при нажатии удаляет его.
-    kb.add(
-        InlineKeyboardButton(text=locale["button_unfavorites"], callback_data=f"favorite:{announcement_id}:{announcement_type}")
-    )
+    # Изменяем кнопку "Избранное", в обычном режиме должна быть "В избранное"
+    if announcement_type == "favorites":
+        kb.add(
+            InlineKeyboardButton(text=locale["button_unfavorites"], callback_data=f"unfavorite:{announcement_id}:{announcement_type}")
+        )
+    else:
+        kb.add(
+            InlineKeyboardButton(text=locale["button_favorite"], callback_data=f"favorite:{announcement_id}:{announcement_type}")
+        )
+    
+    # Добавляем кнопку "Далее" только если есть ещё объявления
     if has_next:
         if announcement_type == "favorites":
             kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data="next:favorites"))
         else:
-            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data=f"next:{announcement_type}"))
+            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data=f"next_{announcement_type}"))
+    
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
     return kb
 
@@ -183,6 +190,47 @@ def action_announcement_keyboard(locale):
 def preview_announcement_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="preview_back"))
+    return kb
+
+
+def keyword_selection_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_trophy_modes"], callback_data="keyword_trophy_modes"),
+        InlineKeyboardButton(text=locale["keyword_ranked"], callback_data="keyword_ranked")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_club_events"], callback_data="keyword_club_events"),
+        InlineKeyboardButton(text=locale["keyword_map_maker"], callback_data="keyword_map_maker")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_other"], callback_data="keyword_other")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_skip_keyword"], callback_data="skip_keyword")
+    )
+    return kb
+
+
+def keyword_filter_keyboard(locale, announcement_type):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale["all_keywords"], callback_data=f"filter_keyword_all_{announcement_type}")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_trophy_modes"], callback_data=f"filter_keyword_trophy_modes_{announcement_type}"),
+        InlineKeyboardButton(text=locale["keyword_ranked"], callback_data=f"filter_keyword_ranked_{announcement_type}")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_club_events"], callback_data=f"filter_keyword_club_events_{announcement_type}"),
+        InlineKeyboardButton(text=locale["keyword_map_maker"], callback_data=f"filter_keyword_map_maker_{announcement_type}")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["keyword_other"], callback_data=f"filter_keyword_other_{announcement_type}")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu")
+    )
     return kb
 
 

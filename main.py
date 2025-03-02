@@ -25,7 +25,7 @@ dp.middleware.setup(PremiumMiddleware())
 
 start.register_handlers_start(dp, LOCALE)
 menu.register_handlers_menu(dp, LOCALE)
-search.register_handlers_search(dp, LOCALE)
+search.register_search_handlers(dp, LOCALE)
 report.register_handlers_report(dp, LOCALE)
 premium.register_handlers_premium(dp, LOCALE)
 crystals.register_handlers_crystals(dp, LOCALE)
