@@ -292,6 +292,9 @@ def get_paginated_announcements(announcement_type: str, current_user_id: int, pa
 
 def get_filtered_announcement(announcement_type: str, current_user_id: int, order: str = "new", keyword: str = None) -> list:
     session = SessionLocal()
+    # Отладочная информация
+    print(f"GET FILTERED: type={announcement_type}, order={order}, keyword={keyword}")
+    
     # Получаем список id пользователей, чьи объявления уже репортнул текущий пользователь
     reported_user_ids = session.query(Announcement.user_id)\
         .join(Report, Report.announcement_id == Announcement.id)\
@@ -310,7 +313,13 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
     
     # Добавляем фильтрацию по ключевому слову
     if keyword and keyword != "all":
-        base_query = base_query.filter(Announcement.keyword == keyword)
+        print(f"Filtering by keyword: {keyword}")
+        # Если keyword == "other", фильтруем все "другие" ключевые слова
+        if keyword == "other":
+            # Фильтрация по keyword == "other" или keyword is NULL
+            base_query = base_query.filter((Announcement.keyword == "other") | (Announcement.keyword == None))
+        else:
+            base_query = base_query.filter(Announcement.keyword == keyword)
     
     # Применяем фильтрацию по order
     if order == "premium":
@@ -327,16 +336,30 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
     # Выполняем запрос
     announcements = base_query.all()
     
+    # Отладочная информация
+    print(f"Found {len(announcements)} announcements")
+    
     session.close()
+    
+    # Преобразуем результат в список id
     return [ann_id for (ann_id,) in announcements]
 
 
-def get_user_announcements_count(user_id: int, announcement_type: str) -> int:
+def get_user_announcements_count(user_id: int, announcement_type: str = None) -> int:
     session = SessionLocal()
-    count = session.query(Announcement).filter(
-        Announcement.user_id == user_id,
-        Announcement.announcement_type == announcement_type
-    ).count()
+    
+    # Если тип не указан, считаем все объявления пользователя
+    if announcement_type is None:
+        count = session.query(Announcement).filter(
+            Announcement.user_id == user_id
+        ).count()
+    else:
+        # Если тип указан, считаем только объявления указанного типа
+        count = session.query(Announcement).filter(
+            Announcement.user_id == user_id,
+            Announcement.announcement_type == announcement_type
+        ).count()
+    
     session.close()
     return count
 

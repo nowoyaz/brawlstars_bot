@@ -20,7 +20,6 @@ def inline_main_menu_keyboard(locale):
         InlineKeyboardButton(text=locale["button_premium"], callback_data="premium")
     )
     kb.add(
-        InlineKeyboardButton(text=locale["button_profile"], callback_data="profile"),
         InlineKeyboardButton(text=locale["button_additional"], callback_data="additional")
     )
     kb.add(

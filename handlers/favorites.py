@@ -26,12 +26,11 @@ async def cmd_favorites(callback: types.CallbackQuery, locale, state: FSMContext
         count = len(fav_list)
         has_next = count > 1
         has_prev = False  # На первой странице нет кнопки "назад"
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
         text = display_announcement_with_keyword(announcement, locale)
         media = InputMediaPhoto(announcement["image_id"], caption=text)
         await callback.message.edit_media(media, reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites"))
     else:
-        await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
+        await callback.message.edit_text(locale["announcement_not_found"], reply_markup=inline_main_menu_keyboard(locale))
 
 # Обработчик для кнопки "Дальше" в разделе избранного
 async def process_next_favorite(callback: types.CallbackQuery, locale, state: FSMContext):
@@ -51,7 +50,6 @@ async def process_next_favorite(callback: types.CallbackQuery, locale, state: FS
     if announcement:
         has_next = count > 1
         has_prev = count > 1  # Есть кнопка "назад", если есть более одного объявления
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
         text = display_announcement_with_keyword(announcement, locale)
         
         try:
@@ -86,7 +84,6 @@ async def process_prev_favorite(callback: types.CallbackQuery, locale, state: FS
     if announcement:
         has_next = count > 1
         has_prev = count > 1
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
         text = display_announcement_with_keyword(announcement, locale)
         
         try:

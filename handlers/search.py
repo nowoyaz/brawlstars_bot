@@ -63,8 +63,7 @@ async def process_my_announcement(callback: types.CallbackQuery, locale, announc
             return
     announcement = get_user_announcement(callback.from_user.id, announcement_type)
     if announcement:
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
-        text = f"<b>Ваше объявление:</b>\n{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}"
+        text = display_announcement_with_keyword(announcement, locale)
         media = types.InputMediaPhoto(announcement["image_id"], caption=text)
         await callback.message.edit_media(media, reply_markup=announcement_view_keyboard(locale))
     else:
@@ -712,10 +711,25 @@ async def filter_by_keyword(callback: types.CallbackQuery, locale, state: FSMCon
     
     # Извлекаем информацию из callback_data
     # Новый формат: kw_keyword_type
-    _, keyword, announcement_type = callback.data.split('_', 2)
+    parts = callback.data.split('_', 2)
+    if len(parts) != 3:
+        # Обработка некорректного формата
+        await callback.message.edit_text(
+            "Ошибка в формате callback_data: " + callback.data,
+            reply_markup=search_options_keyboard(locale)
+        )
+        return
+        
+    _, keyword, announcement_type = parts
+    
+    # Отладочное сообщение
+    print(f"Filter by keyword: {keyword}, type: {announcement_type}")
     
     # Получаем объявления с выбранным ключевым словом
     announcement_ids = get_filtered_announcement(announcement_type, callback.from_user.id, "new", keyword)
+    
+    # Отладочная информация
+    print(f"Found {len(announcement_ids) if announcement_ids else 0} announcements with keyword {keyword}")
     
     if not announcement_ids:
         await callback.message.edit_text(
@@ -774,8 +788,8 @@ def display_announcement_with_keyword(announcement, locale):
         # Если ключевое слово не указано, показываем "Нет ключевого слова"
         keyword_text = "\n" + locale["keyword_label"].format(keyword=locale.get("all_keywords", "Все"))
     
-    premium_label = "\n💎 PREMIUM" if announcement.get("is_premium") else ""
-    return f"{announcement['description']}{premium_label}{keyword_text}\n\n🕒 {announcement['created_at']}"
+    premium_label = "\n" + locale["premium_label"] if announcement.get("is_premium") else ""
+    return f"{announcement['description']}{premium_label}{keyword_text}\n\n{locale['time_label']} {announcement['created_at']}"
 
 async def normal_search_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -835,23 +849,9 @@ async def my_announcement_team(callback: types.CallbackQuery, locale, state: FSM
     
     announcement = get_user_announcement(callback.from_user.id, "team")
     if announcement:
-        # Используем функцию для отображения с ключевым словом
-        premium_label = "⭐" if is_user_premium(callback.from_user.id) else ""
         text = display_announcement_with_keyword(announcement, locale)
-        
-        # Создаем клавиатуру
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(types.InlineKeyboardButton(text=locale["button_delete"], callback_data=f"delete_announcement:{announcement['id']}:team"))
-        kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
-        
-        # Отправляем сообщение с объявлением и клавиатурой
-        await callback.message.delete()
-        await callback.message.bot.send_photo(
-            chat_id=callback.from_user.id,
-            photo=announcement["image_id"],
-            caption=text,
-            reply_markup=kb
-        )
+        media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+        await callback.message.edit_media(media, reply_markup=announcement_view_keyboard(locale))
     else:
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_team"))
@@ -864,23 +864,9 @@ async def my_announcement_club(callback: types.CallbackQuery, locale, state: FSM
     
     announcement = get_user_announcement(callback.from_user.id, "club")
     if announcement:
-        # Используем функцию для отображения с ключевым словом
-        premium_label = "⭐" if is_user_premium(callback.from_user.id) else ""
         text = display_announcement_with_keyword(announcement, locale)
-        
-        # Создаем клавиатуру
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(types.InlineKeyboardButton(text=locale["button_delete"], callback_data=f"delete_announcement:{announcement['id']}:club"))
-        kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
-        
-        # Отправляем сообщение с объявлением и клавиатурой
-        await callback.message.delete()
-        await callback.message.bot.send_photo(
-            chat_id=callback.from_user.id,
-            photo=announcement["image_id"],
-            caption=text,
-            reply_markup=kb
-        )
+        media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+        await callback.message.edit_media(media, reply_markup=announcement_view_keyboard(locale))
     else:
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_club"))

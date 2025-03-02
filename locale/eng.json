@@ -93,6 +93,7 @@
   "button_unfavorites": "❌ Remove from Favorites",
   "button_referral_program": "🤝 Referral Program",
   "announcement_count_text": "📊 Announcements:\nTeam: {team}\nClub: {club}\nTotal: {total}",
+  "all_announcements_count": "📊 Total announcements in system",
   "button_support": "🛠 Support",
   
   "referral_text": "🎁 Earn 20 crystals for inviting a user!\n\nYour referral link:\n{referral_link}\n\nReferrals: {count}",
@@ -104,13 +105,19 @@
   "keyword_map_maker": "🗺️ Map Maker",
   "keyword_other": "📌 Other",
   "button_skip_keyword": "⏩ Skip",
-  "filter_by_keyword": "🔍 Filter by Keywords",
-  "keyword_label": "🔑 Keyword: {keyword}",
-  "all_keywords": "🔄 All Keywords",
+  "filter_by_keyword": "🏷 Select a keyword:",
+  "keyword_label": "🏷 Keyword: {keyword}",
+  "all_keywords": "All",
   "button_delete": "🗑️ Delete",
   "announcement_deleted": "✅ Announcement successfully deleted",
   "not_your_announcement": "❌ This is not your announcement or it doesn't exist",
   "error_deleting_announcement": "❌ Error deleting announcement",
   "button_create": "🆕 Create",
-  "filter_options_text": "🔍 Choose a filter for search:"
+  "filter_options_text": "🔍 Choose a filter for search:",
+  "report_submitted": "✅ Thank you for your report!",
+  "report_canceled": "❌ Report canceled",
+  "premium_label": "💎 PREMIUM",
+  "time_label": "🕒",
+  "edit_failed": "Error editing announcement",
+  "announcement_not_found": "❌ Announcement not found"
 }
