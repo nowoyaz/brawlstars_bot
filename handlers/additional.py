@@ -18,26 +18,32 @@ async def process_announcement_count(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     
-    # Получаем количество объявлений по типам, созданных пользователем
-    team_count = get_user_announcements_count(callback.from_user.id, "team")
-    club_count = get_user_announcements_count(callback.from_user.id, "club")
-    
-    # Получаем общее количество объявлений, созданных пользователем
-    total = team_count + club_count
-    
     # Получаем общее количество всех объявлений в базе данных
     from database.session import SessionLocal
     from database.models import Announcement
     
     session = SessionLocal()
-    all_announcements_count = session.query(Announcement).count()
+    
+    # Количество объявлений типа "team"
+    team_count = session.query(Announcement).filter(
+        Announcement.announcement_type == "team"
+    ).count()
+    
+    # Количество объявлений типа "club"
+    club_count = session.query(Announcement).filter(
+        Announcement.announcement_type == "club"
+    ).count()
+    
+    # Общее количество объявлений
+    total = team_count + club_count
+    
     session.close()
     
     text = locale["announcement_count_text"].format(
         team=team_count, 
         club=club_count, 
         total=total
-    ) + f"\n\n{locale.get('all_announcements_count', 'Всего объявлений в базе')}: {all_announcements_count}"
+    )
     
     await callback.message.edit_text(text, reply_markup=inline_main_menu_keyboard(locale))
 

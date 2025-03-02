@@ -53,6 +53,8 @@ async def process_keyword(callback: types.CallbackQuery, locale, state: FSMConte
     keyword = None
     if callback.data != "skip_keyword":
         keyword = callback.data.replace("keyword_", "")
+        # Отладочная информация
+        print(f"Setting keyword for announcement: callback_data={callback.data}, extracted keyword={keyword}")
         
     await state.update_data(keyword=keyword)
     await callback.message.edit_text(locale["ann_choose_action"], reply_markup=action_announcement_keyboard(locale))

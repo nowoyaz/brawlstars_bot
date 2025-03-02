@@ -301,6 +301,12 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
         .filter(Report.reporter_id == current_user_id).distinct().all()
     reported_user_ids = [uid for (uid,) in reported_user_ids]
     
+    # Показываем все доступные ключевые слова в базе (для отладки)
+    all_keywords = session.query(Announcement.keyword, Announcement.id).filter(
+        Announcement.announcement_type == announcement_type
+    ).all()
+    print(f"All keywords in DB for type {announcement_type}: {[(k[0], k[1]) for k in all_keywords]}")
+    
     # Джойним с таблицей пользователей для доступа к полю is_premium
     base_query = session.query(Announcement.id).join(User, User.id == Announcement.user_id)
     
@@ -314,12 +320,19 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
     # Добавляем фильтрацию по ключевому слову
     if keyword and keyword != "all":
         print(f"Filtering by keyword: {keyword}")
-        # Если keyword == "other", фильтруем все "другие" ключевые слова
-        if keyword == "other":
-            # Фильтрация по keyword == "other" или keyword is NULL
-            base_query = base_query.filter((Announcement.keyword == "other") | (Announcement.keyword == None))
-        else:
-            base_query = base_query.filter(Announcement.keyword == keyword)
+        try:
+            # Если keyword == "other", фильтруем все "другие" ключевые слова или NULL
+            if keyword == "other":
+                base_query = base_query.filter((Announcement.keyword == "other") | (Announcement.keyword == None))
+            else:
+                # Точное совпадение с ключевым словом
+                base_query = base_query.filter(Announcement.keyword == keyword)
+                
+                # Для отладки покажем SQL запрос
+                sql_str = str(base_query.statement.compile(compile_kwargs={"literal_binds": True}))
+                print(f"SQL query: {sql_str}")
+        except Exception as e:
+            print(f"Error in keyword filtering: {e}")
     
     # Применяем фильтрацию по order
     if order == "premium":
@@ -334,10 +347,13 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
         base_query = base_query.order_by(Announcement.created_at.asc())
     
     # Выполняем запрос
-    announcements = base_query.all()
-    
-    # Отладочная информация
-    print(f"Found {len(announcements)} announcements")
+    try:
+        announcements = base_query.all()
+        # Отладочная информация
+        print(f"Found {len(announcements)} announcements")
+    except Exception as e:
+        print(f"Error in executing query: {e}")
+        announcements = []
     
     session.close()
     
