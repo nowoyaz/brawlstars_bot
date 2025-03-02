@@ -97,7 +97,7 @@ def language_keyboard(locale):
 
 
 
-def announcement_keyboard(locale, announcement_id, user_id, has_next, announcement_type):
+def announcement_keyboard(locale, announcement_id, user_id, has_next, has_prev, announcement_type):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(text=locale["button_write"], url=f"tg://user?id={user_id}"),
@@ -113,12 +113,23 @@ def announcement_keyboard(locale, announcement_id, user_id, has_next, announceme
             InlineKeyboardButton(text=locale["button_favorite"], callback_data=f"favorite:{announcement_id}:{announcement_type}")
         )
     
-    # Добавляем кнопку "Далее" только если есть ещё объявления
+    # Добавляем кнопки навигации - "Назад" и "Далее"
+    nav_buttons = []
+    if has_prev:
+        if announcement_type == "favorites":
+            nav_buttons.append(InlineKeyboardButton(text="◀️ " + locale["button_prev"], callback_data="prev:favorites"))
+        else:
+            nav_buttons.append(InlineKeyboardButton(text="◀️ " + locale["button_prev"], callback_data=f"prev_{announcement_type}"))
+    
     if has_next:
         if announcement_type == "favorites":
-            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data="next:favorites"))
+            nav_buttons.append(InlineKeyboardButton(text=locale["button_next"] + " ▶️", callback_data="next:favorites"))
         else:
-            kb.add(InlineKeyboardButton(text=locale["button_next"], callback_data=f"next_{announcement_type}"))
+            nav_buttons.append(InlineKeyboardButton(text=locale["button_next"] + " ▶️", callback_data=f"next_{announcement_type}"))
+    
+    # Добавляем кнопки в ряд, если есть хотя бы одна
+    if nav_buttons:
+        kb.row(*nav_buttons)
     
     kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
     return kb
@@ -213,25 +224,37 @@ def keyword_selection_keyboard(locale):
 
 
 def keyword_filter_keyboard(locale, announcement_type):
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        InlineKeyboardButton(text=locale["all_keywords"], callback_data=f"filter_keyword_all_{announcement_type}")
-    )
-    kb.add(
-        InlineKeyboardButton(text=locale["keyword_trophy_modes"], callback_data=f"filter_keyword_trophy_modes_{announcement_type}"),
-        InlineKeyboardButton(text=locale["keyword_ranked"], callback_data=f"filter_keyword_ranked_{announcement_type}")
-    )
-    kb.add(
-        InlineKeyboardButton(text=locale["keyword_club_events"], callback_data=f"filter_keyword_club_events_{announcement_type}"),
-        InlineKeyboardButton(text=locale["keyword_map_maker"], callback_data=f"filter_keyword_map_maker_{announcement_type}")
-    )
-    kb.add(
-        InlineKeyboardButton(text=locale["keyword_other"], callback_data=f"filter_keyword_other_{announcement_type}")
-    )
-    kb.add(
-        InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu")
-    )
-    return kb
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    buttons = []
+    
+    # Добавляем кнопку для "Все" (без фильтра)
+    buttons.append(InlineKeyboardButton(
+        text=locale.get("filter_all_kw", "Все"),
+        callback_data=f"kw_all_{announcement_type}"
+    ))
+    
+    # Добавляем кнопки для каждого ключевого слова
+    keywords = ["trophy_modes", "ranked", "club_events", "map_maker", "other"]
+    for keyword in keywords:
+        buttons.append(InlineKeyboardButton(
+            text=locale.get(f"keyword_{keyword}", keyword.capitalize()),
+            callback_data=f"kw_{keyword}_{announcement_type}"
+        ))
+    
+    # Добавляем кнопки в клавиатуру
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            keyboard.add(buttons[i], buttons[i+1])
+        else:
+            keyboard.add(buttons[i])
+    
+    # Кнопка "Назад"
+    keyboard.add(InlineKeyboardButton(
+        text=locale["button_back"],
+        callback_data="back_to_search_options_menu" if announcement_type == "team" else "back_to_search_options_club_menu"
+    ))
+    
+    return keyboard
 
 
 from config import SUPPORT_LINK

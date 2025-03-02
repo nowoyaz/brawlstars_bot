@@ -3,7 +3,7 @@ from datetime import datetime
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import save_announcement, get_user_language
+from utils.helpers import save_announcement, get_user_language, is_user_premium
 from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,12 @@ async def action_preview(callback: types.CallbackQuery, locale, state: FSMContex
         keyword_display = locale.get(f"keyword_{keyword}", keyword)
         keyword_text = "\n" + locale["keyword_label"].format(keyword=keyword_display)
     
-    preview_text = f"<b>{description}</b>{keyword_text}\n\n🕒 {preview_date}"
+    # Добавляем премиум-метку, если пользователь премиум
+    premium_text = ""
+    if is_user_premium(callback.from_user.id):
+        premium_text = " 💎 PREMIUM"
+    
+    preview_text = f"<b>{description}</b>{keyword_text}{premium_text}\n\n🕒 {preview_date}"
     await callback.message.delete()
     await callback.message.bot.send_photo(
         chat_id=callback.from_user.id,

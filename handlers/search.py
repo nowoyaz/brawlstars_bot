@@ -13,7 +13,8 @@ from utils.helpers import (
     get_filtered_announcement,
     get_announcements_list,
     get_announcement_by_id,
-    is_user_premium
+    is_user_premium,
+    get_paginated_announcements
 )
 
 from keyboards.inline_keyboard import (
@@ -86,67 +87,113 @@ async def process_search_club_options(callback: types.CallbackQuery, locale):
     text = locale["search_options_text"]
     await callback.message.edit_text(text, reply_markup=search_options_club_keyboard(locale))
 
-async def process_normal_search_team_confirmation(callback: types.CallbackQuery, locale):
+async def process_normal_search_team_confirmation(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    text = locale["normal_search_advice_text"]
-    await callback.message.edit_text(text, reply_markup=confirmation_keyboard(locale, suffix="team"))
+    await process_normal_search_team(callback, locale, state)
 
 async def process_next_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    announcement_list = get_announcements_list("team", callback.from_user.id)
-    if not announcement_list:
+    
+    # Получаем текущую страницу из FSM (если нет, начинаем с 0)
+    data = await state.get_data()
+    current_page = data.get("announcement_page", 0)
+    next_page = current_page + 1
+    
+    # Получаем объявления с пагинацией
+    paginated_data = get_paginated_announcements("team", callback.from_user.id, next_page)
+    
+    if not paginated_data["current_announcement"]:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
         return
-    # Получаем текущий индекс из FSM (если нет, начинаем с 0)
-    data = await state.get_data()
-    announcement_index = data.get("announcement_index", 0)
-    count = len(announcement_list)
-    # Обновляем индекс циклично
-    next_index = (announcement_index + 1) % count
-    await state.update_data(announcement_index=next_index)
-    current_id = announcement_list[announcement_index]
-    announcement = get_announcement_by_id(current_id)
+    
+    # Сохраняем новую страницу в FSM
+    await state.update_data(announcement_page=paginated_data["current_page"])
+    
+    announcement = paginated_data["current_announcement"]
     if announcement:
-        text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
-        has_next = count > 1
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "team")
+            reply_markup=announcement_keyboard(
+                locale, 
+                announcement["id"], 
+                announcement["user_id"], 
+                paginated_data["has_next"], 
+                paginated_data["has_prev"],
+                "team"
+            )
         )
     else:
         await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
 
-async def process_normal_search_team(callback: types.CallbackQuery, locale):
+async def process_prev_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    announcement = get_next_announcement("team", callback.from_user.id)
+    
+    # Получаем текущую страницу из FSM
+    data = await state.get_data()
+    current_page = data.get("announcement_page", 0)
+    prev_page = current_page - 1
+    
+    # Получаем объявления с пагинацией
+    paginated_data = get_paginated_announcements("team", callback.from_user.id, prev_page)
+    
+    if not paginated_data["current_announcement"]:
+        await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+        return
+    
+    # Сохраняем новую страницу в FSM
+    await state.update_data(announcement_page=paginated_data["current_page"])
+    
+    announcement = paginated_data["current_announcement"]
     if announcement:
-        count = get_announcements_count("team", callback.from_user.id)
-        has_next = count > 1
-        premium_label = " 💎 PREMIUM" if is_user_premium(announcement['user_id']) else ""
-        text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}\n{premium_label}"
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "team")
+            reply_markup=announcement_keyboard(
+                locale, 
+                announcement["id"], 
+                announcement["user_id"], 
+                paginated_data["has_next"], 
+                paginated_data["has_prev"],
+                "team"
+            )
         )
     else:
-        await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+        await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
 
-async def process_normal_search_club_confirmation(callback: types.CallbackQuery, locale):
+async def process_normal_search_team(callback: types.CallbackQuery, locale, state: FSMContext):
+    """
+    Обработчик для перехода к просмотру обычных объявлений поиска команды
+    """
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    # Сбрасываем индекс просмотра на 0 при первом просмотре
+    await state.update_data(announcement_page=0)
+    # Сначала советуем использовать репорт
+    await callback.message.edit_text(locale["normal_search_advice_text"], reply_markup=confirmation_keyboard(locale, "team"))
+
+async def process_normal_search_club_confirmation(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     text = locale["normal_search_advice_text"]
@@ -155,43 +202,103 @@ async def process_normal_search_club_confirmation(callback: types.CallbackQuery,
 async def process_next_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    announcement_list = get_announcements_list("club", callback.from_user.id)
-    if not announcement_list:
+    
+    # Получаем текущую страницу из FSM (если нет, начинаем с 0)
+    data = await state.get_data()
+    current_page = data.get("announcement_page", 0)
+    next_page = current_page + 1
+    
+    # Получаем объявления с пагинацией
+    paginated_data = get_paginated_announcements("club", callback.from_user.id, next_page)
+    
+    if not paginated_data["current_announcement"]:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
         return
-    data = await state.get_data()
-    announcement_index = data.get("announcement_index", 0)
-    count = len(announcement_list)
-    next_index = (announcement_index + 1) % count
-    await state.update_data(announcement_index=next_index)
-    current_id = announcement_list[announcement_index]
-    announcement = get_announcement_by_id(current_id)
+    
+    # Сохраняем новую страницу в FSM
+    await state.update_data(announcement_page=paginated_data["current_page"])
+    
+    announcement = paginated_data["current_announcement"]
     if announcement:
-        text = f"{announcement['description']}\n\n🕒 {announcement['created_at']}"
-        has_next = count > 1
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "club")
+            reply_markup=announcement_keyboard(
+                locale, 
+                announcement["id"], 
+                announcement["user_id"], 
+                paginated_data["has_next"], 
+                paginated_data["has_prev"],
+                "club"
+            )
         )
     else:
         await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
 
-async def process_normal_search_club(callback: types.CallbackQuery, locale):
+async def process_prev_club(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем текущую страницу из FSM
+    data = await state.get_data()
+    current_page = data.get("announcement_page", 0)
+    prev_page = current_page - 1
+    
+    # Получаем объявления с пагинацией
+    paginated_data = get_paginated_announcements("club", callback.from_user.id, prev_page)
+    
+    if not paginated_data["current_announcement"]:
+        await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+        return
+    
+    # Сохраняем новую страницу в FSM
+    await state.update_data(announcement_page=paginated_data["current_page"])
+    
+    announcement = paginated_data["current_announcement"]
+    if announcement:
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        await callback.message.bot.send_photo(
+            callback.from_user.id,
+            photo=announcement["image_id"],
+            caption=text,
+            reply_markup=announcement_keyboard(
+                locale, 
+                announcement["id"], 
+                announcement["user_id"], 
+                paginated_data["has_next"], 
+                paginated_data["has_prev"],
+                "club"
+            )
+        )
+    else:
+        await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
+
+async def process_normal_search_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     announcement = get_next_announcement("club", callback.from_user.id)
     if announcement:
         count = get_announcements_count("club", callback.from_user.id)
         has_next = count > 1
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
-        text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}\n{premium_label}"
-
+        has_prev = False  # На первой странице нет кнопки "назад"
+        premium_label = " 💎 PREMIUM" if is_user_premium(announcement['user_id']) else ""
+        text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}"
         try:
             await callback.message.delete()
         except Exception:
@@ -200,24 +307,48 @@ async def process_normal_search_club(callback: types.CallbackQuery, locale):
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "club")
+            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
         )
     else:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
 
 # ----- Избранное -----
 
-async def process_favorite(callback: types.CallbackQuery, locale, announcement_type: str):
+async def process_favorite(callback: types.CallbackQuery, locale, announcement_type: str, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer(locale["button_favorite"] + " ✅")
     data = callback.data.split(":")
     if len(data) >= 3:
         announcement_id = int(data[1])
         add_favorite(callback.from_user.id, announcement_id)
-    if announcement_type == "team":
-        await process_normal_search_team(callback, locale)
-    else:
-        await process_normal_search_club(callback, locale)
+        
+        # Получаем данные объявления для отображения
+        announcement = get_announcement_by_id(announcement_id)
+        if announcement:
+            count = get_announcements_count(announcement_type, callback.from_user.id)
+            has_next = count > 1
+            has_prev = False  # На первой странице нет кнопки "назад"
+            
+            # Показываем объявление с отметкой премиум если нужно
+            text = display_announcement_with_keyword(announcement, locale)
+            
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+                
+            await callback.message.bot.send_photo(
+                callback.from_user.id,
+                photo=announcement["image_id"],
+                caption=text,
+                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+            )
+        else:
+            # Если объявление не найдено (маловероятно), просто вернемся к списку
+            if announcement_type == "team":
+                await process_search_team_menu(callback, locale)
+            else:
+                await process_search_club_menu(callback, locale)
 
 async def process_unfavorite(callback: types.CallbackQuery, locale):
     """
@@ -280,6 +411,7 @@ async def process_back_report(callback: types.CallbackQuery, locale):
         if announcement:
             count = get_announcements_count(announcement_type, callback.from_user.id)
             has_next = count > 1
+            has_prev = False  # При возврате из меню репорта показываем первое объявление
             text = display_announcement_with_keyword(announcement, locale)
             try:
                 await callback.message.delete()
@@ -289,51 +421,72 @@ async def process_back_report(callback: types.CallbackQuery, locale):
                 callback.from_user.id,
                 photo=announcement["image_id"],
                 caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, announcement_type)
+                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
             )
         else:
             await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
 
 async def confirm_report(callback: types.CallbackQuery, locale):
+    """
+    Обработчик подтверждения репорта
+    """
     locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    # Ожидаемый формат: "confirm_report:<announcement_id>:<reason>:<announcement_type>:yes"
     data = callback.data.split(":")
     if len(data) >= 5:
-        announcement_id, reason, announcement_type, confirmation = int(data[1]), data[2], data[3], data[4]
-        if confirmation == "yes":
+        announcement_id = int(data[1])
+        reason = data[2]
+        announcement_type = data[3]
+        confirmed = data[4]
+        
+        if confirmed == "yes":
+            # Записываем репорт в базу данных
             report_announcement(callback.from_user.id, announcement_id, reason)
-            from utils.helpers import get_announcement_by_id
-            announcement = get_announcement_by_id(announcement_id)
-            if announcement:
-                # Используем форматирование с ключевыми словами для админа
-                text = f"{display_announcement_with_keyword(announcement, locale)}\nПричина: {reason}"
-                await callback.bot.send_photo(
-                    ADMIN_ID,
-                    photo=announcement["image_id"],
-                    caption=text,
-                    reply_markup=report_admin_keyboard(locale, announcement["user_id"], callback.from_user.id)
-                )
-                
-                # Сообщаем пользователю об успешной отправке репорта
-                await callback.answer(locale.get("report_sent_success", "Репорт успешно отправлен"), show_alert=True)
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        # Переход к следующему объявлению, если оно есть:
-        if announcement_type == "team":
-            next_ann = get_next_announcement("team", callback.from_user.id)
-            if next_ann:
-                await process_normal_search_team(callback, locale)
-            else:
-                await callback.message.bot.send_message(callback.from_user.id, locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+            await callback.answer(locale["button_report"] + " ✅")
+            
+            # Здесь можно добавить логику отправки уведомления администратору
+            
+            # Показываем следующее объявление
+            if announcement_type == "team":
+                announcement = get_next_announcement("team", callback.from_user.id)
+                if announcement:
+                    count = get_announcements_count("team", callback.from_user.id)
+                    has_next = count > 1
+                    has_prev = False  # Для упрощения, после репорта всегда показываем первое объявление
+                    premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
+                    text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}"
+                    # Отправляем сообщение с фотографией
+                    await callback.message.edit_media(
+                        types.InputMediaPhoto(
+                            media=announcement["image_id"],
+                            caption=text
+                        ),
+                        reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+                    )
+                else:
+                    await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+            elif announcement_type == "club":
+                announcement = get_next_announcement("club", callback.from_user.id)
+                if announcement:
+                    count = get_announcements_count("club", callback.from_user.id)
+                    has_next = count > 1
+                    has_prev = False  # Для упрощения, после репорта всегда показываем первое объявление
+                    premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
+                    text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}"
+                    # Отправляем сообщение с фотографией
+                    await callback.message.edit_media(
+                        types.InputMediaPhoto(
+                            media=announcement["image_id"],
+                            caption=text
+                        ),
+                        reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+                    )
+                else:
+                    await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
         else:
-            next_ann = get_next_announcement("club", callback.from_user.id)
-            if next_ann:
-                await process_normal_search_club(callback, locale)
-            else:
-                await callback.message.bot.send_message(callback.from_user.id, locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
+            await callback.answer("Репорт отменен")
+    else:
+        # Неверный формат данных
+        await callback.answer("Ошибка в формате данных")
 
 async def cancel_report(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
@@ -346,6 +499,7 @@ async def cancel_report(callback: types.CallbackQuery, locale):
         if announcement:
             count = get_announcements_count(announcement_type, callback.from_user.id)
             has_next = count > 1
+            has_prev = False  # После отмены репорта возвращаем первое объявление
             # Используем функцию для отображения с ключевым словом
             text = display_announcement_with_keyword(announcement, locale)
             try:
@@ -356,7 +510,7 @@ async def cancel_report(callback: types.CallbackQuery, locale):
                 callback.from_user.id,
                 photo=announcement["image_id"],
                 caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, announcement_type)
+                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
             )
         else:
             await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
@@ -440,24 +594,42 @@ async def process_report_reason(callback: types.CallbackQuery, locale):
 
 # ----- Фильтрация -----
 
-async def process_filtered_search(callback: types.CallbackQuery, locale, announcement_type: str, order: str = "new"):
+async def process_filtered_search(callback: types.CallbackQuery, locale, announcement_type: str, order: str = "new", state: FSMContext = None):
     """
     Обработчик для поиска объявлений с фильтрацией
     """
     locale = get_user_language(callback.from_user.id)
-    announcements = get_filtered_announcement(announcement_type, callback.from_user.id, order)
+    announcement_ids = get_filtered_announcement(announcement_type, callback.from_user.id, order)
     
-    if not announcements:
+    if not announcement_ids:
         kb = search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
         await callback.message.edit_text(locale["no_announcements"], reply_markup=kb)
         return
     
     # Берем первое объявление
-    announcement = announcements[0]
+    announcement_id = announcement_ids[0]
+    # Получаем полные данные объявления по ID
+    announcement = get_announcement_by_id(announcement_id)
+    
+    if not announcement:
+        kb = search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
+        await callback.message.edit_text(locale["no_announcements"], reply_markup=kb)
+        return
+        
     text = display_announcement_with_keyword(announcement, locale)
     
     # Проверяем, есть ли еще объявления
-    has_next = len(announcements) > 1
+    has_next = len(announcement_ids) > 1
+    has_prev = False  # На первой странице нет кнопки "назад"
+    
+    # Сохраняем данные в состоянии (если передан state)
+    if state:
+        await state.update_data(
+            announcement_ids=announcement_ids,
+            current_index=0,
+            filter_order=order,
+            announcement_type=announcement_type
+        )
     
     # Отправляем сообщение с объявлением
     await callback.message.delete()
@@ -470,6 +642,7 @@ async def process_filtered_search(callback: types.CallbackQuery, locale, announc
             announcement["id"],
             announcement["user_id"],
             has_next,
+            has_prev,
             announcement_type
         )
     )
@@ -538,13 +711,13 @@ async def filter_by_keyword(callback: types.CallbackQuery, locale, state: FSMCon
     await callback.answer()
     
     # Извлекаем информацию из callback_data
+    # Новый формат: kw_keyword_type
     _, keyword, announcement_type = callback.data.split('_', 2)
-    announcement_type = announcement_type.split('_')[-1]  # Извлекаем team или club
     
     # Получаем объявления с выбранным ключевым словом
-    announcements = get_filtered_announcement(announcement_type, callback.from_user.id, "new", keyword)
+    announcement_ids = get_filtered_announcement(announcement_type, callback.from_user.id, "new", keyword)
     
-    if not announcements:
+    if not announcement_ids:
         await callback.message.edit_text(
             locale["no_announcements"],
             reply_markup=search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
@@ -552,10 +725,28 @@ async def filter_by_keyword(callback: types.CallbackQuery, locale, state: FSMCon
         return
     
     # Берем первое объявление из списка
-    announcement = announcements[0]
+    announcement_id = announcement_ids[0]
+    
+    # Получаем полные данные объявления по ID
+    announcement = get_announcement_by_id(announcement_id)
+    
+    if not announcement:
+        await callback.message.edit_text(
+            locale["no_announcements"],
+            reply_markup=search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
+        )
+        return
     
     # Проверяем, есть ли еще объявления с этим фильтром
-    has_next = len(announcements) > 1
+    has_next = len(announcement_ids) > 1
+    
+    # Сохраняем список ID объявлений в состоянии
+    await state.update_data(
+        announcement_ids=announcement_ids,
+        current_index=0,
+        filter_keyword=keyword,
+        announcement_type=announcement_type
+    )
     
     # Отправляем сообщение с фото
     await callback.message.delete()
@@ -568,6 +759,7 @@ async def filter_by_keyword(callback: types.CallbackQuery, locale, state: FSMCon
             announcement["id"],
             announcement["user_id"],
             has_next,
+            False,  # has_prev всегда False на первой странице
             announcement_type
         )
     )
@@ -578,9 +770,12 @@ def display_announcement_with_keyword(announcement, locale):
     if announcement.get("keyword"):
         keyword_display = locale.get(f"keyword_{announcement['keyword']}", announcement['keyword'])
         keyword_text = "\n" + locale["keyword_label"].format(keyword=keyword_display)
+    else:
+        # Если ключевое слово не указано, показываем "Нет ключевого слова"
+        keyword_text = "\n" + locale["keyword_label"].format(keyword=locale.get("all_keywords", "Все"))
     
-    premium_label = "⭐" if announcement.get("is_premium") else ""
-    return f"{announcement['description']}{keyword_text}\n\n🕒 {announcement['created_at']}{premium_label}"
+    premium_label = "\n💎 PREMIUM" if announcement.get("is_premium") else ""
+    return f"{announcement['description']}{premium_label}{keyword_text}\n\n🕒 {announcement['created_at']}"
 
 async def normal_search_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -589,40 +784,47 @@ async def normal_search_team(callback: types.CallbackQuery, locale, state: FSMCo
     if announcement:
         count = get_announcements_count("team", callback.from_user.id)
         has_next = count > 1
-        premium_label = " 💎 PREMIUM" if is_user_premium(announcement['user_id']) else ""
-        text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}\n{premium_label}"
+        has_prev = False  # На первой странице нет кнопки "назад"
+        
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "team")
+            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
         )
     else:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
 
-async def normal_search_club(callback: types.CallbackQuery, locale):
+async def normal_search_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     announcement = get_next_announcement("club", callback.from_user.id)
     if announcement:
         count = get_announcements_count("club", callback.from_user.id)
         has_next = count > 1
-        premium_label = " 💎 PREMIUM" if announcement.get("is_premium") else ""
-        text = f"{announcement['description']}{premium_label}\n\n🕒 {announcement['created_at']}\n{premium_label}"
-
+        has_prev = False  # На первой странице нет кнопки "назад"
+        
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.bot.send_photo(
             callback.from_user.id,
             photo=announcement["image_id"],
             caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, "club")
+            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
         )
     else:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
@@ -763,7 +965,107 @@ def register_search_handlers(dp: Dispatcher, locale):
         state="*"
     )
     
-    # Добавим новые обработчики для фильтрации по ключевым словам
+    # Регистрация для подтверждения просмотра
+    dp.register_callback_query_handler(
+        lambda call, state: process_normal_search_team_confirmation(call, locale, state),
+        lambda c: c.data == "process_normal_search_team_confirmation",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_normal_search_club_confirmation(call, locale, state),
+        lambda c: c.data == "process_normal_search_club_confirmation",
+        state="*"
+    )
+    
+    # Добавляем обработчики для пагинации - кнопки "Вперед" и "Назад"
+    dp.register_callback_query_handler(
+        lambda call, state: process_next_team(call, locale, state),
+        lambda c: c.data == "next_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_prev_team(call, locale, state),
+        lambda c: c.data == "prev_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_next_club(call, locale, state),
+        lambda c: c.data == "next_club",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_prev_club(call, locale, state),
+        lambda c: c.data == "prev_club",
+        state="*"
+    )
+
+    # ... остальная регистрация обработчиков
+    dp.register_callback_query_handler(
+        lambda call, state: process_favorite(call, locale, "team", state),
+        lambda c: c.data.startswith("favorite:") and ":team" in c.data,
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_favorite(call, locale, "club", state),
+        lambda c: c.data.startswith("favorite:") and ":club" in c.data,
+        state="*"
+    )
+    dp.register_callback_query_handler(lambda call: process_unfavorite(call, locale), lambda c: c.data.startswith("unfavorite:"))
+    dp.register_callback_query_handler(lambda call: process_back_report(call, locale), lambda c: c.data.startswith("back_report:"))
+    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
+    dp.register_callback_query_handler(lambda call: process_report_selection(call, locale), lambda c: c.data.startswith("confirm_report_selection:"))
+    
+    dp.register_callback_query_handler(lambda call: delete_announcement(call, locale), lambda c: c.data.startswith("delete_announcement:"))
+    dp.register_callback_query_handler(lambda call: get_next_team(call, locale), lambda c: c.data.startswith("next_team"))
+    dp.register_callback_query_handler(lambda call: get_next_club(call, locale), lambda c: c.data.startswith("next_club"))
+    dp.register_callback_query_handler(
+        lambda call, state: filter_new_team(call, locale, state),
+        lambda c: c.data == "filter_new_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: filter_old_team(call, locale, state),
+        lambda c: c.data == "filter_old_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: filter_premium_team(call, locale, state),
+        lambda c: c.data == "filter_premium_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: filter_new_club(call, locale, state),
+        lambda c: c.data == "filter_new_club",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: filter_old_club(call, locale, state),
+        lambda c: c.data == "filter_old_club",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: filter_premium_club(call, locale, state),
+        lambda c: c.data == "filter_premium_club",
+        state="*"
+    )
+    dp.register_callback_query_handler(lambda call: write_to_owner(call, locale), lambda c: c.data.startswith("write:"))
+    dp.register_callback_query_handler(lambda call: process_report(call, locale, "team"), lambda c: c.data.startswith("report:") and ":team" in c.data)
+    dp.register_callback_query_handler(lambda call: process_report(call, locale, "club"), lambda c: c.data.startswith("report:") and ":club" in c.data)
+    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
+    dp.register_callback_query_handler(lambda call: confirm_report(call, locale), lambda c: c.data.startswith("confirm_report:"))
+    dp.register_callback_query_handler(lambda call: cancel_report(call, locale), lambda c: c.data.startswith("cancel_report:"))
+    dp.register_callback_query_handler(
+        lambda call, state: confirm_normal_search_team(call, locale, state),
+        lambda c: c.data == "confirm_normal_search_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: confirm_normal_search_club(call, locale, state),
+        lambda c: c.data == "confirm_normal_search_club",
+        state="*"
+    )
+
+    # Регистрация обработчиков для фильтров по ключевым словам
     dp.register_callback_query_handler(
         lambda call, state: filter_keyword_team(call, locale, state),
         lambda c: c.data == "filter_keyword_team",
@@ -776,35 +1078,9 @@ def register_search_handlers(dp: Dispatcher, locale):
     )
     dp.register_callback_query_handler(
         lambda call, state: filter_by_keyword(call, locale, state),
-        lambda c: c.data.startswith("filter_keyword_") and not c.data in ["filter_keyword_team", "filter_keyword_club"],
+        lambda c: c.data.startswith('kw_'),
         state="*"
     )
-    
-    # Исправленные регистрации для избранного, репортов и прочих функций
-    dp.register_callback_query_handler(lambda call: process_favorite(call, locale, "team"), lambda c: c.data.startswith("favorite:") and ":team" in c.data)
-    dp.register_callback_query_handler(lambda call: process_favorite(call, locale, "club"), lambda c: c.data.startswith("favorite:") and ":club" in c.data)
-    dp.register_callback_query_handler(lambda call: process_unfavorite(call, locale), lambda c: c.data.startswith("unfavorite:"))
-    dp.register_callback_query_handler(lambda call: process_back_report(call, locale), lambda c: c.data.startswith("back_report:"))
-    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
-    dp.register_callback_query_handler(lambda call: process_report_selection(call, locale), lambda c: c.data.startswith("confirm_report_selection:"))
-    
-    dp.register_callback_query_handler(lambda call: delete_announcement(call, locale), lambda c: c.data.startswith("delete_announcement:"))
-    dp.register_callback_query_handler(lambda call: confirm_normal_search_team(call, locale), lambda c: c.data == "confirm_normal_search_team")
-    dp.register_callback_query_handler(lambda call: confirm_normal_search_club(call, locale), lambda c: c.data == "confirm_normal_search_club")
-    dp.register_callback_query_handler(lambda call: get_next_team(call, locale), lambda c: c.data.startswith("next_team"))
-    dp.register_callback_query_handler(lambda call: get_next_club(call, locale), lambda c: c.data.startswith("next_club"))
-    dp.register_callback_query_handler(lambda call: filter_new_team(call, locale), lambda c: c.data == "filter_new_team")
-    dp.register_callback_query_handler(lambda call: filter_old_team(call, locale), lambda c: c.data == "filter_old_team")
-    dp.register_callback_query_handler(lambda call: filter_premium_team(call, locale), lambda c: c.data == "filter_premium_team")
-    dp.register_callback_query_handler(lambda call: filter_new_club(call, locale), lambda c: c.data == "filter_new_club")
-    dp.register_callback_query_handler(lambda call: filter_old_club(call, locale), lambda c: c.data == "filter_old_club")
-    dp.register_callback_query_handler(lambda call: filter_premium_club(call, locale), lambda c: c.data == "filter_premium_club")
-    dp.register_callback_query_handler(lambda call: write_to_owner(call, locale), lambda c: c.data.startswith("write:"))
-    dp.register_callback_query_handler(lambda call: process_report(call, locale, "team"), lambda c: c.data.startswith("report:") and ":team" in c.data)
-    dp.register_callback_query_handler(lambda call: process_report(call, locale, "club"), lambda c: c.data.startswith("report:") and ":club" in c.data)
-    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
-    dp.register_callback_query_handler(lambda call: confirm_report(call, locale), lambda c: c.data.startswith("confirm_report:"))
-    dp.register_callback_query_handler(lambda call: cancel_report(call, locale), lambda c: c.data.startswith("cancel_report:"))
 
 async def get_next_team(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
@@ -862,35 +1138,35 @@ async def get_next_club(callback: types.CallbackQuery, locale):
     else:
         await callback.message.edit_text(locale["no_announcements"], reply_markup=search_options_club_keyboard(locale))
 
-async def filter_new_team(callback: types.CallbackQuery, locale):
+async def filter_new_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "team", "new")
+    await process_filtered_search(callback, locale, "team", "new", state)
 
-async def filter_old_team(callback: types.CallbackQuery, locale):
+async def filter_old_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "team", "old")
+    await process_filtered_search(callback, locale, "team", "old", state)
 
-async def filter_premium_team(callback: types.CallbackQuery, locale):
+async def filter_premium_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "team", "premium")
+    await process_filtered_search(callback, locale, "team", "premium", state)
 
-async def filter_new_club(callback: types.CallbackQuery, locale):
+async def filter_new_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "club", "new")
+    await process_filtered_search(callback, locale, "club", "new", state)
 
-async def filter_old_club(callback: types.CallbackQuery, locale):
+async def filter_old_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "club", "old")
+    await process_filtered_search(callback, locale, "club", "old", state)
 
-async def filter_premium_club(callback: types.CallbackQuery, locale):
+async def filter_premium_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_filtered_search(callback, locale, "club", "premium")
+    await process_filtered_search(callback, locale, "club", "premium", state)
 
 async def delete_announcement(callback: types.CallbackQuery, locale):
     # Получаем данные из callback
@@ -945,18 +1221,19 @@ async def write_to_owner(callback: types.CallbackQuery, locale):
     """
     await callback.answer()
 
-async def confirm_normal_search_team(callback: types.CallbackQuery, locale):
+async def confirm_normal_search_team(callback: types.CallbackQuery, locale, state: FSMContext):
     """
     Подтверждение перехода к обычному поиску команды
     """
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_normal_search_team(callback, locale)
+    await process_normal_search_team(callback, locale, state)
     
-async def confirm_normal_search_club(callback: types.CallbackQuery, locale):
+async def confirm_normal_search_club(callback: types.CallbackQuery, locale, state: FSMContext):
     """
     Подтверждение перехода к обычному поиску клуба
     """
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    await process_normal_search_club(callback, locale)
+    await process_normal_search_club(callback, locale, state)
+

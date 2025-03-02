@@ -160,13 +160,17 @@ def get_announcement_by_id(announcement_id: int) -> dict:
         user = session.query(User).filter(User.id == announcement.user_id).first()
     session.close()
     if announcement:
+        is_premium = False
+        if user and user.is_premium:
+            is_premium = True
+        
         return {
             "id": announcement.id,
             "user_id": announcement.user_id,
             "image_id": announcement.image_id,
             "description": announcement.description,
             "keyword": announcement.keyword,
-            "is_premium": user.is_premium if user else False,
+            "is_premium": is_premium,
             "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
         }
     return None
@@ -225,13 +229,66 @@ def get_announcements_list(announcement_type: str, current_user_id: int) -> list
         .join(Report, Report.announcement_id == Announcement.id)\
         .filter(Report.reporter_id == current_user_id).distinct().all()
     reported_user_ids = [uid for (uid,) in reported_user_ids]
-    announcements = session.query(Announcement).filter(
-        Announcement.announcement_type == announcement_type,
-        Announcement.user_id != current_user_id,
-        ~Announcement.user_id.in_(reported_user_ids)
-    ).order_by(Announcement.created_at.desc()).all()
+    
+    # Сначала получаем премиум-объявления
+    premium_announcements = session.query(Announcement.id)\
+        .join(User, User.id == Announcement.user_id)\
+        .filter(
+            Announcement.announcement_type == announcement_type,
+            Announcement.user_id != current_user_id,
+            ~Announcement.user_id.in_(reported_user_ids),
+            User.is_premium == True
+        ).order_by(Announcement.created_at.desc()).all()
+    
+    # Затем получаем обычные объявления
+    regular_announcements = session.query(Announcement.id)\
+        .join(User, User.id == Announcement.user_id)\
+        .filter(
+            Announcement.announcement_type == announcement_type,
+            Announcement.user_id != current_user_id,
+            ~Announcement.user_id.in_(reported_user_ids),
+            User.is_premium == False
+        ).order_by(Announcement.created_at.desc()).all()
+    
+    # Объединяем результаты: сначала премиум, потом обычные
+    announcements = [ann_id for (ann_id,) in premium_announcements] + [ann_id for (ann_id,) in regular_announcements]
+    
     session.close()
-    return [ann.id for ann in announcements]
+    return announcements
+
+def get_paginated_announcements(announcement_type: str, current_user_id: int, page: int = 0) -> dict:
+    """
+    Получает объявления с поддержкой пагинации.
+    Возвращает словарь с текущим объявлением, общим количеством и флагами наличия следующей/предыдущей страницы.
+    """
+    announcement_list = get_announcements_list(announcement_type, current_user_id)
+    total_count = len(announcement_list)
+    
+    result = {
+        "total_count": total_count,
+        "current_page": page,
+        "has_next": False,
+        "has_prev": False,
+        "current_announcement": None
+    }
+    
+    if total_count == 0:
+        return result
+    
+    # Проверяем границы page
+    if page < 0:
+        page = 0
+    elif page >= total_count:
+        page = total_count - 1
+    
+    result["current_page"] = page
+    result["has_next"] = page < total_count - 1
+    result["has_prev"] = page > 0
+    
+    current_id = announcement_list[page]
+    result["current_announcement"] = get_announcement_by_id(current_id)
+    
+    return result
 
 def get_filtered_announcement(announcement_type: str, current_user_id: int, order: str = "new", keyword: str = None) -> list:
     session = SessionLocal()
@@ -241,40 +298,37 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
         .filter(Report.reporter_id == current_user_id).distinct().all()
     reported_user_ids = [uid for (uid,) in reported_user_ids]
     
-    query = session.query(Announcement).filter(
+    # Джойним с таблицей пользователей для доступа к полю is_premium
+    base_query = session.query(Announcement.id).join(User, User.id == Announcement.user_id)
+    
+    # Базовые фильтры, применяемые всегда
+    base_query = base_query.filter(
         Announcement.announcement_type == announcement_type,
         Announcement.user_id != current_user_id,
         ~Announcement.user_id.in_(reported_user_ids)
     )
     
-    # Добавляем фильтрацию по ключевому слову, если оно указано
+    # Добавляем фильтрацию по ключевому слову
     if keyword and keyword != "all":
-        query = query.filter(Announcement.keyword == keyword)
+        base_query = base_query.filter(Announcement.keyword == keyword)
     
-    # Добавляем сортировку
-    if order == "new":
-        query = query.order_by(Announcement.created_at.desc())
-    else:
-        query = query.order_by(Announcement.created_at.asc())
+    # Применяем фильтрацию по order
+    if order == "premium":
+        # Фильтруем только премиум-пользователей
+        base_query = base_query.filter(User.is_premium == True)
+        # И сортируем по дате создания (новые сначала)
+        base_query = base_query.order_by(Announcement.created_at.desc())
+    # Применяем сортировку
+    elif order == "new":
+        base_query = base_query.order_by(Announcement.created_at.desc())
+    elif order == "old":
+        base_query = base_query.order_by(Announcement.created_at.asc())
     
-    announcements = query.all()
+    # Выполняем запрос
+    announcements = base_query.all()
+    
     session.close()
-    
-    result = []
-    session = SessionLocal()
-    for announcement in announcements:
-        user = session.query(User).filter(User.id == announcement.user_id).first()
-        result.append({
-            "id": announcement.id,
-            "user_id": announcement.user_id,
-            "image_id": announcement.image_id,
-            "description": announcement.description,
-            "keyword": announcement.keyword,
-            "is_premium": user.is_premium if user else False,
-            "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
-        })
-    session.close()
-    return result
+    return [ann_id for (ann_id,) in announcements]
 
 
 def get_user_announcements_count(user_id: int, announcement_type: str) -> int:
