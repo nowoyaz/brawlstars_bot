@@ -381,3 +381,41 @@ def get_referral_count(user_id: int) -> int:
     count = session.query(Referral).filter(Referral.inviter_id == user_id).count()
     session.close()
     return count
+
+def can_receive_daily_crystals(user_id: int) -> bool:
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        session.close()
+        return False
+    
+    now = datetime.datetime.now(timezone.utc)
+    if user.last_gift is None:
+        session.close()
+        return True
+    
+    # Проверяем, прошло ли время с последнего получения (проверяем по дате)
+    last_gift_date = user.last_gift.date()
+    current_date = now.date()
+    
+    session.close()
+    return current_date > last_gift_date
+
+def give_daily_crystals(user_id: int) -> tuple[bool, int]:
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        session.close()
+        return False, 0
+    
+    if not can_receive_daily_crystals(user_id):
+        session.close()
+        return False, 0
+    
+    # Даем 100 кристаллов
+    crystals_amount = 100
+    user.crystals += crystals_amount
+    user.last_gift = datetime.datetime.now(timezone.utc)
+    session.commit()
+    session.close()
+    return True, crystals_amount

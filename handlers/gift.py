@@ -16,30 +16,42 @@ async def cmd_gift(callback: types.CallbackQuery, locale):
 
 async def process_receive_gift(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
-    # Проверяем, прошло ли 2 часа с последнего подарка
     session = SessionLocal()
     user = session.query(User).filter(User.id == callback.from_user.id).first()
     now = datetime.datetime.utcnow()
+    
+    # Проверяем, получал ли пользователь подарок сегодня
     if user.last_gift is not None:
-        diff = now - user.last_gift
-        if diff < datetime.timedelta(hours=2):
-            remaining = datetime.timedelta(hours=2) - diff
-            minutes = int(remaining.total_seconds() // 60)
-            seconds = int(remaining.total_seconds() % 60)
+        last_gift_date = user.last_gift.date()
+        today = now.date()
+        if last_gift_date == today:
+            # Если подарок уже получен сегодня, показываем сообщение
             session.close()
-            # Отправляем всплывающее уведомление с информацией об оставшемся времени
-            await callback.answer(locale["gift_time_error"].format(minutes=minutes, seconds=seconds), show_alert=True)
+            await callback.answer(locale["daily_crystals_already"], show_alert=True)
             return
-    # Если прошло достаточно времени, начисляем подарок
-    gift_amount = random.randint(1, 10)
-    user.crystals += gift_amount
-    user.last_gift = now
-    session.commit()
-    session.close()
-    # Отправляем всплывающее уведомление о получении подарка
-    await callback.answer(locale["gift_success"].format(amount=gift_amount), show_alert=True)
-    # Возвращаем пользователя в главное меню
-    await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
+            
+        # Если последний подарок был получен в другой день, 
+        # проверяем не наступила ли уже полночь
+        if now.hour >= 0:
+            # Можно получить новый подарок
+            gift_amount = random.randint(1, 10)
+            user.crystals += gift_amount
+            user.last_gift = now
+            session.commit()
+            session.close()
+            await callback.answer(locale["gift_success"].format(amount=gift_amount), show_alert=True)
+            await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
+            return
+    else:
+        # Если подарок еще ни разу не получали
+        gift_amount = random.randint(1, 10)
+        user.crystals += gift_amount
+        user.last_gift = now
+        session.commit()
+        session.close()
+        await callback.answer(locale["gift_success"].format(amount=gift_amount), show_alert=True)
+        await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
+        return
 
 async def process_gift_back(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)

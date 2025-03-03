@@ -41,7 +41,7 @@
   "admin_block": "🔒 Block",
   "admin_ignore": "✅ Do Not Block",
   
-  "premium_text": "🔥 Get the most out of the bot with Premium!\n\n⭐️ Early access to new features – try them first.\n\n📽 Upload videos/GIFs in announcements – attract more teammates!\n\n🎯 Two active announcements – search for both team and club simultaneously.\n\n🏆 Premium Badge – stand out among other players.\n\n⚡️ Faster bot performance.\n\n🍭 Lifetime subscription!\n\nCost: 500 coins\nYou have {0} coins.",
+  "premium_text": "🔥 Get the most out of the bot with Premium!\n\n⭐️ Early access to new features – try them first.\n\n📽 Upload videos/GIFs in announcements – attract more teammates!\n\n🎯 Two active announcements – search for both team and club simultaneously.\n\n🏆 Premium Badge – stand out among other players.\n\n🍭 Lifetime subscription!\n\nCost: 500 coins\nYou have {0} coins.",
   "button_buy_premium": "💳 Buy Premium",
   "premium_success": "✅ Congratulations! Premium activated.",
   "premium_fail": "❌ Not enough coins. You have {crystals}.",
@@ -82,10 +82,10 @@
   "button_normal_search": "🆗 Normal",
   "button_filtered_search": "🔄 With Filters",
   
-  "gift_text": "🎁 Receive a gift every 2 hours!",
+  "gift_text": "🎁 Get your daily gift at 00:00!",
   "button_gift": "🎁 Gift",
   "button_receive_gift": "🎁 Claim",
-  "gift_time_error": "⌛️ You can claim your gift in {minutes} min {seconds} sec",
+  "gift_time_error": "⌛️ You've already claimed your gift today. Come back tomorrow at 00:00!",
   "gift_success": "🎉 You received a gift: {amount} coins!",
   
   "additional_text": "⚙️ Additional: choose an option",
@@ -101,7 +101,7 @@
   "referral_text": "🎁 Earn 20 coins for inviting a user!\n\nYour referral link:\n{referral_link}\n\nReferrals: {count}",
   
   "ann_select_keyword": "🔑 Select a keyword for your announcement:",
-  "keyword_trophy_modes": "🏆 Trophy Modes",
+  "keyword_trophy_modes": "🏆 Team Battle",
   "keyword_ranked": "🔝 Ranked",
   "keyword_club_events": "👥 Club Events",
   "keyword_map_maker": "🗺️ Map Maker",
@@ -126,5 +126,12 @@
   "log_ann_start": "Starting announcement creation: type={type}, user={user}",
   "log_ann_photo": "Received photo from user={user}",
   "log_ann_media": "Saved media_id={media_id}, type={type}",
-  "log_ann_publish": "Publishing announcement from user={user}"
+  "log_ann_publish": "Publishing announcement from user={user}",
+  "button_daily_crystals": "💎 Daily Coins",
+  "daily_crystals_received": "✅ You received {amount} coins!\nCome back tomorrow for a new reward!",
+  "daily_crystals_already": "⏳ You've already received your daily coins.\nCome back tomorrow!",
+  "daily_crystals_error": "❌ Error receiving coins",
+  "language_text": "🌐 Choose your language:",
+  "button_lang_ru": "🇷🇺 Russian",
+  "button_lang_eng": "🇬🇧 English"
 }

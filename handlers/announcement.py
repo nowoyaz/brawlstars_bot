@@ -4,7 +4,8 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from utils.helpers import save_announcement, get_user_language, is_user_premium
-from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard
+from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard, rules_keyboard
+from states.announcement import AnnouncementState
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +17,32 @@ class AnnouncementStates(StatesGroup):
     waiting_in_preview = State()
 
 async def cmd_create_announcement(message: types.Message, announcement_type: str, locale, state: FSMContext):
-    """Начало создания объявления"""
-    locale = get_user_language(message.from_user.id)
-    logger.info(locale["log_ann_start"].format(type=announcement_type, user=message.from_user.id))
-    
-    # Сбрасываем предыдущее состояние, если оно было
-    await state.finish()
-    
-    # Начинаем новое состояние и сохраняем данные
+    """Начало создания нового объявления"""
+    # Сохраняем тип объявления в состояние
     await state.update_data(announcement_type=announcement_type)
-    await AnnouncementStates.waiting_for_photo.set()
     
-    # Добавляем кнопку "Назад" в клавиатуру
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton(locale["button_back"], callback_data="back_to_menu"))
-    await message.answer(locale["ann_send_photo"], reply_markup=keyboard)
+    # Показываем правила
+    await show_rules(message, locale, announcement_type)
+
+async def show_rules(message: types.Message, locale, announcement_type: str):
+    """Показывает правила перед созданием объявления"""
+    text = f"{locale['rules_title']}\n\n{locale['rules_text']}"
+    await message.answer(text, reply_markup=rules_keyboard(locale, announcement_type))
+
+async def process_rules_accept(callback: types.CallbackQuery, locale, state: FSMContext):
+    """Обработчик принятия правил"""
+    await callback.answer()
+    announcement_type = callback.data.split('_')[2]  # accept_rules_team или accept_rules_club
+    
+    # Устанавливаем флаг, что правила приняты
+    await state.update_data(rules_accepted=True)
+    
+    # Показываем сообщение для создания объявления
+    await callback.message.edit_text(
+        locale["ann_send_photo"],
+        reply_markup=None
+    )
+    await AnnouncementState.waiting_for_photo.set()
 
 async def process_photo(message: types.Message, locale, state: FSMContext):
     """Обработка полученного медиа"""
@@ -40,6 +52,10 @@ async def process_photo(message: types.Message, locale, state: FSMContext):
         
         # Получаем текущие данные состояния
         data = await state.get_data()
+        if not data.get('rules_accepted', False):
+            await show_rules(message, locale, data.get('announcement_type', 'team'))
+            return
+        
         if not data.get('announcement_type'):
             await state.finish()
             await message.answer(locale["ann_cancelled"], reply_markup=inline_main_menu_keyboard(locale))
@@ -81,7 +97,7 @@ async def process_photo(message: types.Message, locale, state: FSMContext):
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(types.InlineKeyboardButton(locale["button_back"], callback_data="back_to_menu"))
         await message.answer(locale["ann_send_desc"], reply_markup=keyboard)
-        await AnnouncementStates.waiting_for_description.set()
+        await AnnouncementState.waiting_for_description.set()
     except Exception as e:
         logger.error(f"Error in process_photo: {e}")
         await message.answer("An error occurred while processing media")
@@ -102,12 +118,12 @@ async def process_description(message: types.Message, locale, state: FSMContext)
     if announcement_type == "team":
         # Показываем клавиатуру с ключевыми словами
         await message.answer(locale["ann_select_keyword"], reply_markup=keyword_selection_keyboard(locale))
-        await AnnouncementStates.waiting_for_keyword.set()
+        await AnnouncementState.waiting_for_keyword.set()
     else:
         # Для клубов сразу переходим к действию с публикацией
         await state.update_data(keyword=None)  # Явно устанавливаем keyword как None для клубов
         await message.answer(locale["ann_choose_action"], reply_markup=action_announcement_keyboard(locale))
-        await AnnouncementStates.waiting_for_action.set()
+        await AnnouncementState.waiting_for_action.set()
 
 async def process_keyword(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -121,7 +137,7 @@ async def process_keyword(callback: types.CallbackQuery, locale, state: FSMConte
         
     await state.update_data(keyword=keyword)
     await callback.message.edit_text(locale["ann_choose_action"], reply_markup=action_announcement_keyboard(locale))
-    await AnnouncementStates.waiting_for_action.set()
+    await AnnouncementState.waiting_for_action.set()
 
 async def action_publish(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -190,7 +206,7 @@ async def action_preview(callback: types.CallbackQuery, locale, state: FSMContex
             reply_markup=preview_announcement_keyboard(locale)
         )
     
-    await AnnouncementStates.waiting_in_preview.set()
+    await AnnouncementState.waiting_in_preview.set()
 
 async def preview_back(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -201,7 +217,7 @@ async def preview_back(callback: types.CallbackQuery, locale, state: FSMContext)
         text=locale["ann_choose_action"],
         reply_markup=action_announcement_keyboard(locale)
     )
-    await AnnouncementStates.waiting_for_action.set()
+    await AnnouncementState.waiting_for_action.set()
 
 async def action_cancel(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -263,14 +279,18 @@ def register_announcement_handlers(dp: Dispatcher, locale):
     
     # Регистрируем обработчики создания объявлений
     dp.register_callback_query_handler(
-        lambda call, state: cmd_create_announcement(call.message, "team", locale, state),
-        lambda c: c.data == "create_new_team",
-        state="*"
+        lambda c: cmd_create_announcement(c.message, "team", locale, dp.current_state()),
+        lambda c: c.data == "create_new_team"
     )
     dp.register_callback_query_handler(
-        lambda call, state: cmd_create_announcement(call.message, "club", locale, state),
-        lambda c: c.data == "create_new_club",
-        state="*"
+        lambda c: cmd_create_announcement(c.message, "club", locale, dp.current_state()),
+        lambda c: c.data == "create_new_club"
+    )
+    
+    # Регистрируем обработчик правил
+    dp.register_callback_query_handler(
+        lambda c: process_rules_accept(c, locale, dp.current_state()),
+        lambda c: c.data.startswith("accept_rules_")
     )
     
     # Регистрируем обработчик медиа
@@ -281,36 +301,37 @@ def register_announcement_handlers(dp: Dispatcher, locale):
             types.ContentType.VIDEO,
             types.ContentType.ANIMATION
         ],
-        state=AnnouncementStates.waiting_for_photo
+        state=AnnouncementState.waiting_for_photo
     )
     
     # Остальные обработчики
     dp.register_message_handler(
         lambda message, state: process_description(message, locale, state),
-        state=AnnouncementStates.waiting_for_description
+        state=AnnouncementState.waiting_for_description
     )
     dp.register_callback_query_handler(
         lambda call, state: process_keyword(call, locale, state),
         lambda c: c.data.startswith("keyword_") or c.data == "skip_keyword",
-        state=AnnouncementStates.waiting_for_keyword
+        state=AnnouncementState.waiting_for_keyword
     )
     dp.register_callback_query_handler(
         lambda call, state: action_publish(call, locale, state),
         lambda c: c.data == "publish_announcement",
-        state=AnnouncementStates.waiting_for_action
+        state=AnnouncementState.waiting_for_action
     )
     dp.register_callback_query_handler(
         lambda call, state: action_preview(call, locale, state),
         lambda c: c.data == "preview_announcement",
-        state=AnnouncementStates.waiting_for_action
+        state=AnnouncementState.waiting_for_action
     )
     dp.register_callback_query_handler(
         lambda call, state: action_cancel(call, locale, state),
         lambda c: c.data == "cancel_announcement",
-        state=AnnouncementStates.waiting_for_action
+        state=AnnouncementState.waiting_for_action
     )
     dp.register_callback_query_handler(
         lambda call, state: preview_back(call, locale, state),
         lambda c: c.data == "preview_back",
-        state=AnnouncementStates.waiting_in_preview
+        state=AnnouncementState.waiting_in_preview
     )
+

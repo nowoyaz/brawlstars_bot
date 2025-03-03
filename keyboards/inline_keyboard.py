@@ -1,5 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import CHANNEL_LINK
+from config import CHANNEL_LINK, SUPPORT_LINK
 
 def start_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=2)
@@ -83,11 +83,10 @@ def report_confirmation_keyboard(announcement_id, announcement_type, reason):
 
 
 def language_keyboard(locale):
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_language:ru"),
-        InlineKeyboardButton(text="🇬🇧 Английский", callback_data="set_language:eng")
+        InlineKeyboardButton(text=locale["button_lang_ru"], callback_data="set_language:ru"),
+        InlineKeyboardButton(text=locale["button_lang_eng"], callback_data="set_language:eng")
     )
     kb.add(
         InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")
@@ -258,8 +257,6 @@ def keyword_filter_keyboard(locale, announcement_type):
     return keyboard
 
 
-from config import SUPPORT_LINK
-
 def additional_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -267,8 +264,8 @@ def additional_keyboard(locale):
         InlineKeyboardButton(text=locale["button_announcement_count"], callback_data="announcement_count")
     )
     kb.add(
-        InlineKeyboardButton(text=locale["button_favorites"], callback_data="favorites"),
-        InlineKeyboardButton(text=locale["button_referral_program"], callback_data="referral")
+        InlineKeyboardButton(text=locale["button_referral_program"], callback_data="referral"),
+        InlineKeyboardButton(text=locale["button_favorites"], callback_data="favorites")
     )
     kb.add(
         InlineKeyboardButton(text=locale["button_support"], url=SUPPORT_LINK)
@@ -285,5 +282,15 @@ def gift_keyboard(locale):
     kb.add(
         InlineKeyboardButton(text=locale["button_receive_gift"], callback_data="receive_gift"),
         InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")
+    )
+    return kb
+
+def rules_keyboard(locale, announcement_type: str):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale["button_accept_rules"],
+            callback_data=f"accept_rules_{announcement_type}"
+        )
     )
     return kb
