@@ -9,7 +9,7 @@ async def cmd_premium(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     user_crystals = get_user_crystals(callback.from_user.id)
-    premium_status = "💎 Премиум активирован" if is_user_premium(callback.from_user.id) else ""
+    premium_status = "🪙 Премиум активирован" if is_user_premium(callback.from_user.id) else ""
     text = locale["premium_text"].format(user_crystals) + "\n" + premium_status
     kb = types.InlineKeyboardMarkup(row_width=1)
     # Если пользователь не премиум, показываем кнопку "Купить"

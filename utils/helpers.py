@@ -1,5 +1,6 @@
 import json
 import datetime
+from datetime import timezone
 from database.session import SessionLocal
 from database.models import User, Announcement, Favorite, Report, Referral
 
@@ -37,6 +38,7 @@ def get_next_announcement(announcement_type: str, current_user_id: int) -> dict:
             "id": announcement.id,
             "user_id": announcement.user_id,
             "image_id": announcement.image_id,
+            "media_type": announcement.media_type,
             "description": announcement.description,
             "keyword": announcement.keyword,
             "is_premium": user.is_premium if user else False,
@@ -58,15 +60,16 @@ def get_announcements_count(announcement_type: str, current_user_id: int) -> int
     session.close()
     return count
 
-def save_announcement(user_id, announcement_type, image_id, description, keyword=None):
+def save_announcement(user_id: int, announcement_type: str, image_id: str, description: str, keyword: str = None, media_type: str = "photo"):
     session = SessionLocal()
     announcement = Announcement(
         user_id=user_id,
         announcement_type=announcement_type,
         image_id=image_id,
+        media_type=media_type,
         description=description,
         keyword=keyword,
-        created_at=datetime.datetime.utcnow()
+        created_at=datetime.datetime.now(timezone.utc)
     )
     session.add(announcement)
     session.commit()
@@ -84,6 +87,7 @@ def get_user_announcement(user_id, announcement_type: str) -> dict:
             "id": announcement.id,
             "user_id": announcement.user_id,
             "image_id": announcement.image_id,
+            "media_type": announcement.media_type,
             "description": announcement.description,
             "keyword": announcement.keyword,
             "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
@@ -98,8 +102,8 @@ def report_announcement(user_id: int, announcement_id: int, reason: str):
         report = Report(
             reporter_id=user_id,
             announcement_id=announcement_id,
-            reason=reason,  # Передаём выбранную причину
-            created_at=datetime.datetime.utcnow()
+            reason=reason,
+            created_at=datetime.datetime.now(timezone.utc)
         )
         session.add(report)
         session.commit()
@@ -109,7 +113,7 @@ def ensure_user_exists(user_id, username):
     session = SessionLocal()
     user = session.query(User).filter(User.id == user_id).first()
     if not user:
-        user = User(id=user_id, username=username, crystals=1000, created_at=datetime.datetime.utcnow())
+        user = User(id=user_id, username=username, crystals=1000, created_at=datetime.datetime.now(timezone.utc))
         session.add(user)
         session.commit()
     session.close()
@@ -155,23 +159,19 @@ def add_favorite(user_id: int, announcement_id: int):
 def get_announcement_by_id(announcement_id: int) -> dict:
     session = SessionLocal()
     announcement = session.query(Announcement).filter(Announcement.id == announcement_id).first()
-    user = None
-    if announcement:
-        user = session.query(User).filter(User.id == announcement.user_id).first()
     session.close()
     if announcement:
-        is_premium = False
-        if user and user.is_premium:
-            is_premium = True
-        
+        from utils.helpers import is_user_premium
         return {
             "id": announcement.id,
             "user_id": announcement.user_id,
             "image_id": announcement.image_id,
+            "media_type": announcement.media_type,
             "description": announcement.description,
-            "keyword": announcement.keyword,
-            "is_premium": is_premium,
-            "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
+            "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M"),
+            "is_premium": is_user_premium(announcement.user_id),
+            "announcement_type": announcement.announcement_type,
+            "keyword": announcement.keyword
         }
     return None
 
@@ -215,7 +215,7 @@ def process_crystal_transfer(sender_id, receiver_id, amount: int):
         return False, "❌ Адрес не найден"
     if sender.crystals < amount:
         session.close()
-        return False, "❌ Недостаточно кристаллов"
+        return False, "❌ Недостаточно монет"
     sender.crystals -= amount
     receiver.crystals += amount
     session.commit()
@@ -317,43 +317,24 @@ def get_filtered_announcement(announcement_type: str, current_user_id: int, orde
         ~Announcement.user_id.in_(reported_user_ids)
     )
     
-    # Добавляем фильтрацию по ключевому слову
+    # Фильтр по ключевому слову
     if keyword and keyword != "all":
-        print(f"Filtering by keyword: {keyword}")
-        try:
-            # Если keyword == "other", фильтруем все "другие" ключевые слова или NULL
-            if keyword == "other":
-                base_query = base_query.filter((Announcement.keyword == "other") | (Announcement.keyword == None))
-            else:
-                # Точное совпадение с ключевым словом
-                base_query = base_query.filter(Announcement.keyword == keyword)
-                
-                # Для отладки покажем SQL запрос
-                sql_str = str(base_query.statement.compile(compile_kwargs={"literal_binds": True}))
-                print(f"SQL query: {sql_str}")
-        except Exception as e:
-            print(f"Error in keyword filtering: {e}")
+        base_query = base_query.filter(Announcement.keyword == keyword)
     
-    # Применяем фильтрацию по order
-    if order == "premium":
-        # Фильтруем только премиум-пользователей
-        base_query = base_query.filter(User.is_premium == True)
-        # И сортируем по дате создания (новые сначала)
-        base_query = base_query.order_by(Announcement.created_at.desc())
-    # Применяем сортировку
-    elif order == "new":
+    # Применяем сортировку в зависимости от order
+    if order == "new":
         base_query = base_query.order_by(Announcement.created_at.desc())
     elif order == "old":
         base_query = base_query.order_by(Announcement.created_at.asc())
+    elif order == "premium":
+        base_query = base_query.filter(User.is_premium == True)\
+                              .order_by(Announcement.created_at.desc())
     
-    # Выполняем запрос
-    try:
-        announcements = base_query.all()
-        # Отладочная информация
-        print(f"Found {len(announcements)} announcements")
-    except Exception as e:
-        print(f"Error in executing query: {e}")
-        announcements = []
+    # Получаем результаты
+    announcements = base_query.all()
+    
+    # Отладочная информация
+    print(f"Found {len(announcements)} announcements")
     
     session.close()
     
@@ -387,7 +368,7 @@ def process_referral(referred_id: int, inviter_id: int):
     if not existing and referred_id != inviter_id:
         referral = Referral(inviter_id=inviter_id, referred_id=referred_id)
         session.add(referral)
-        # Начисляем пригласившему 20 кристаллов
+        # Начисляем пригласившему 20 монет
         user = session.query(User).filter(User.id == inviter_id).first()
         if user:
             user.crystals += 20

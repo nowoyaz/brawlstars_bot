@@ -226,27 +226,28 @@ def keyword_filter_keyboard(locale, announcement_type):
     keyboard = InlineKeyboardMarkup(row_width=2)
     buttons = []
     
-    # Добавляем кнопку для "Все" (без фильтра)
-    buttons.append(InlineKeyboardButton(
-        text=locale.get("filter_all_kw", "Все"),
-        callback_data=f"keyword_filter:all:{announcement_type}"
-    ))
-    
-    # Добавляем кнопки для каждого ключевого слова - используем те же значения, что и при создании
-    # Имена ключевых слов должны соответствовать тем, что сохраняются в базе данных
-    keywords = ["trophy_modes", "ranked", "club_events", "map_maker", "other"]
-    for keyword in keywords:
+    # Добавляем кнопки только для команд
+    if announcement_type == "team":
+        # Добавляем кнопку для "Все" (без фильтра)
         buttons.append(InlineKeyboardButton(
-            text=locale.get(f"keyword_{keyword}", keyword.capitalize()),
-            callback_data=f"keyword_filter:{keyword}:{announcement_type}"  # новый формат: keyword_filter:[keyword]:[type]
+            text=locale.get("filter_all_kw", "Все"),
+            callback_data=f"keyword_filter:all:{announcement_type}"
         ))
-    
-    # Добавляем кнопки в клавиатуру
-    for i in range(0, len(buttons), 2):
-        if i + 1 < len(buttons):
-            keyboard.add(buttons[i], buttons[i+1])
-        else:
-            keyboard.add(buttons[i])
+        
+        # Добавляем кнопки для каждого ключевого слова
+        keywords = ["trophy_modes", "ranked", "club_events", "map_maker", "other"]
+        for keyword in keywords:
+            buttons.append(InlineKeyboardButton(
+                text=locale.get(f"keyword_{keyword}", keyword.capitalize()),
+                callback_data=f"keyword_filter:{keyword}:{announcement_type}"
+            ))
+        
+        # Добавляем кнопки в клавиатуру
+        for i in range(0, len(buttons), 2):
+            if i + 1 < len(buttons):
+                keyboard.add(buttons[i], buttons[i+1])
+            else:
+                keyboard.add(buttons[i])
     
     # Кнопка "Назад"
     keyboard.add(InlineKeyboardButton(

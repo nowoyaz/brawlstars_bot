@@ -35,7 +35,7 @@ class Announcement(Base):
     announcement_type = Column(Enum("team", "club", name="announcement_type"), nullable=False)
     image_id = Column(String, nullable=False)
     media_id = Column(String, nullable=True)
-    media_type = Column(String, nullable=True)
+    media_type = Column(String, default="photo")
     description = Column(Text, nullable=False)
     keyword = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
