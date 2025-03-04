@@ -3,12 +3,37 @@ from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from utils.helpers import get_favorites_list, get_announcement_by_id, get_announcements_count, get_user_language
 from keyboards.inline_keyboard import announcement_keyboard, inline_main_menu_keyboard
-from aiogram.types import InputMediaPhoto
+from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaAnimation
 from handlers.search import display_announcement_with_keyword
 
 # FSM для избранного (для хранения текущего индекса)
 class FavoritesStates(StatesGroup):
     favorite_index = State()
+
+async def send_announcement_media(message, announcement, text, keyboard):
+    media_type = announcement.get("media_type", "photo")
+    media_id = announcement["image_id"]
+    
+    if media_type == "photo":
+        media = InputMediaPhoto(media_id, caption=text)
+        await message.edit_media(media, reply_markup=keyboard)
+    elif media_type == "video":
+        media = InputMediaVideo(media_id, caption=text)
+        await message.edit_media(media, reply_markup=keyboard)
+    elif media_type == "animation":
+        media = InputMediaAnimation(media_id, caption=text)
+        await message.edit_media(media, reply_markup=keyboard)
+
+async def send_new_announcement_media(bot, chat_id, announcement, text, keyboard):
+    media_type = announcement.get("media_type", "photo")
+    media_id = announcement["image_id"]
+    
+    if media_type == "photo":
+        await bot.send_photo(chat_id, photo=media_id, caption=text, reply_markup=keyboard)
+    elif media_type == "video":
+        await bot.send_video(chat_id, video=media_id, caption=text, reply_markup=keyboard)
+    elif media_type == "animation":
+        await bot.send_animation(chat_id, animation=media_id, caption=text, reply_markup=keyboard)
 
 # Обработчик для показа избранного – вызывается при нажатии на кнопку "Избранное"
 async def cmd_favorites(callback: types.CallbackQuery, locale, state: FSMContext):
@@ -27,8 +52,8 @@ async def cmd_favorites(callback: types.CallbackQuery, locale, state: FSMContext
         has_next = count > 1
         has_prev = False  # На первой странице нет кнопки "назад"
         text = display_announcement_with_keyword(announcement, locale)
-        media = InputMediaPhoto(announcement["image_id"], caption=text)
-        await callback.message.edit_media(media, reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites"))
+        keyboard = announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites")
+        await send_announcement_media(callback.message, announcement, text, keyboard)
     else:
         await callback.message.edit_text(locale["announcement_not_found"], reply_markup=inline_main_menu_keyboard(locale))
 
@@ -45,23 +70,25 @@ async def process_next_favorite(callback: types.CallbackQuery, locale, state: FS
     count = len(fav_list)
     next_index = (favorite_index + 1) % count
     await state.update_data(favorite_index=next_index)
-    announcement_id = fav_list[next_index]  # Изменено с favorite_index на next_index
+    announcement_id = fav_list[next_index]
     announcement = get_announcement_by_id(announcement_id)
     if announcement:
         has_next = count > 1
-        has_prev = count > 1  # Есть кнопка "назад", если есть более одного объявления
+        has_prev = count > 1
         text = display_announcement_with_keyword(announcement, locale)
+        keyboard = announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites")
         
         try:
             await callback.message.delete()
         except Exception:
             pass
             
-        await callback.message.bot.send_photo(
+        await send_new_announcement_media(
+            callback.message.bot,
             callback.from_user.id,
-            photo=announcement["image_id"],
-            caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites")
+            announcement,
+            text,
+            keyboard
         )
     else:
         await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
@@ -85,17 +112,19 @@ async def process_prev_favorite(callback: types.CallbackQuery, locale, state: FS
         has_next = count > 1
         has_prev = count > 1
         text = display_announcement_with_keyword(announcement, locale)
+        keyboard = announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites")
         
         try:
             await callback.message.delete()
         except Exception:
             pass
             
-        await callback.message.bot.send_photo(
+        await send_new_announcement_media(
+            callback.message.bot,
             callback.from_user.id,
-            photo=announcement["image_id"],
-            caption=text,
-            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "favorites")
+            announcement,
+            text,
+            keyboard
         )
     else:
         await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))

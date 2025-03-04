@@ -10,7 +10,7 @@
   "button_crystals": "🪙 Coins",
   "button_premium": "💫 Premium",
   "button_profile": "👤 Profile",
-  "button_additional": "⚙️ Additional",
+  "button_additional": "🧿 Additional: choose an option",
   "button_gift": "🎁 Gift",
   
   "search_team_menu_text": "📋 Choose an option for team:",
@@ -26,7 +26,7 @@
   
   "normal_search_advice_text": "💡 Tip:\nIf you notice any rule violations, press \"⚠️ Report\". Thanks!",
   
-  "no_announcements": "😕 No announcements",
+  "no_announcements": "📝 No announcements sent. Send a photo to create one:",
   "button_write": "💬 Write",
   "button_report": "⚠️ Report",
   "button_favorite": "💖 Favorite",
@@ -41,7 +41,7 @@
   "admin_block": "🔒 Block",
   "admin_ignore": "✅ Do Not Block",
   
-  "premium_text": "🔥 Get the most out of the bot with Premium!\n\n⭐️ Early access to new features – try them first.\n\n📽 Upload videos/GIFs in announcements – attract more teammates!\n\n🎯 Two active announcements – search for both team and club simultaneously.\n\n🏆 Premium Badge – stand out among other players.\n\n🍭 Lifetime subscription!\n\nCost: 500 coins\nYou have {0} coins.",
+  "premium_text": "😎 Be the best with Premium subscription and its cool features!\n\n⭐️ Early access to new features – test them first.\n\n📲 Video and GIF in announcements – attract more teammates!\n\n🔥 Two active announcements – search for two teams or two clubs at once.\n\n🏆 Premium badge – stand out among other players.",
   "button_buy_premium": "💳 Buy Premium",
   "premium_success": "✅ Congratulations! Premium activated.",
   "premium_fail": "❌ Not enough coins. You have {crystals}.",
@@ -61,11 +61,11 @@
   "no_announcement_create_prompt": "📄 You have no announcement yet. Send a photo to create one.",
   "button_create_new": "🆕 Create New",
   
-  "ann_send_photo": "📸 Send a photo, video, or GIF (video and GIF available only for premium users) for your announcement:",
+  "ann_send_photo": "📲 Send a photo, video, or GIF to create an announcement\n(Video and GIF for premium users only):",
   "ann_media_invalid": "❌ Please send a photo, or video/GIF (if you have premium).",
   "ann_photo_invalid": "❌ Please send a photo.",
   "ann_send_desc": "📝 Send a brief description (min. 20 characters).",
-  "ann_desc_short": "❌ Description too short, at least 20 characters required, you have {count}.",
+  "ann_desc_short": "😉 Description must be at least 20 characters",
   "ann_choose_action": "📌 Choose an action:",
   "ann_preview": "🔍 Here's how your announcement will look:",
   "ann_cancelled": "❌ Announcement creation cancelled.",
@@ -88,7 +88,7 @@
   "gift_time_error": "⌛️ You've already claimed your gift today. Come back tomorrow at 00:00!",
   "gift_success": "🎉 You received a gift: {amount} coins!",
   
-  "additional_text": "⚙️ Additional: choose an option",
+  "additional_text": "🧿 Additional: choose an option",
   "button_language": "🌐 Language",
   "button_announcement_count": "📊 Announcement Count",
   "button_favorites": "💖 Favorites",
@@ -133,5 +133,7 @@
   "daily_crystals_error": "❌ Error receiving coins",
   "language_text": "🌐 Choose your language:",
   "button_lang_ru": "🇷🇺 Russian",
-  "button_lang_eng": "🇬🇧 English"
+  "button_lang_eng": "🇬🇧 English",
+  "rules_title": "Chat Rules:",
+  "rules_text": "Advertising ❌\n\nExternal links ❌\n\nProfanity ❌\n\n18+ Content ❌\n\n⚠️ Click 'Report' if someone's announcement violates our rules"
 }
