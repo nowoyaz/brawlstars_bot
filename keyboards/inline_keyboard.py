@@ -73,11 +73,11 @@ def confirmation_keyboard(locale, suffix="team"):
     return kb
 
 
-def report_confirmation_keyboard(announcement_id, announcement_type, reason):
+def report_confirmation_keyboard(locale, announcement_id, announcement_type, reason):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(text="Да", callback_data=f"confirm_report:{announcement_id}:{reason}:{announcement_type}:yes"),
-        InlineKeyboardButton(text="Нет", callback_data=f"cancel_report:{announcement_id}:{announcement_type}")
+        InlineKeyboardButton(text=locale["confirm"], callback_data=f"confirm_report:{announcement_id}:{reason}:{announcement_type}:yes"),
+        InlineKeyboardButton(text=locale["cancel"], callback_data=f"cancel_report:{announcement_id}:{announcement_type}")
     )
     return kb
 
@@ -319,8 +319,9 @@ def admin_premium_keyboard(locale):
 
 def admin_panel_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton(text="Выдать премиум", callback_data="give_premium"))
-    kb.add(InlineKeyboardButton(text="Управление ценами", callback_data="manage_prices"))
+    kb.add(InlineKeyboardButton(text=locale["admin_give_premium"], callback_data="give_premium"))
+    kb.add(InlineKeyboardButton(text=locale["admin_manage_prices"], callback_data="manage_prices"))
+    kb.add(InlineKeyboardButton(text=locale["admin_manage_sponsors"], callback_data="manage_sponsors"))
     return kb
 
 def admin_premium_duration_keyboard(locale):
@@ -333,5 +334,109 @@ def admin_premium_duration_keyboard(locale):
         InlineKeyboardButton(text="1 год", callback_data="premium_1year"),
         InlineKeyboardButton(text="Навсегда", callback_data="premium_forever")
     )
-    kb.add(InlineKeyboardButton(text="Назад", callback_data="back_to_admin"))
+    kb.add(InlineKeyboardButton(text=locale["back_to_admin_panel"], callback_data="back_to_admin"))
+    return kb
+
+# Клавиатуры для спонсоров
+def sponsors_list_keyboard(locale, sponsors, user_id, user_subscriptions):
+    """Клавиатура со списком спонсоров"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    
+    # Добавляем кнопки для каждого спонсора
+    for sponsor in sponsors:
+        # Проверяем, подписан ли пользователь на спонсора
+        is_subscribed = sponsor.id in user_subscriptions
+        
+        # Текст кнопки спонсора
+        if is_subscribed:
+            sponsor_text = f"✅ {sponsor.name}"
+        else:
+            sponsor_text = f"📣 {sponsor.name}"
+        
+        # Если пользователь уже подписан, кнопка будет неактивна
+        if is_subscribed:
+            kb.add(InlineKeyboardButton(
+                text=sponsor_text,
+                callback_data=f"sponsor_already_subscribed:{sponsor.id}"
+            ))
+        else:
+            # Добавляем кнопку для проверки подписки
+            kb.add(InlineKeyboardButton(
+                text=sponsor_text,
+                callback_data=f"check_subscription:{sponsor.id}"
+            ))
+            
+            # Добавляем кнопку с прямой ссылкой на канал спонсора
+            kb.add(InlineKeyboardButton(
+                text=locale.get("go_to_channel", "🔗 Перейти на канал"),
+                url=sponsor.link
+            ))
+    
+    # Добавляем кнопку возврата в меню
+    kb.add(InlineKeyboardButton(text=locale["back_to_menu"], callback_data="back_to_menu"))
+    
+    return kb
+
+def admin_sponsors_keyboard(locale):
+    """Клавиатура для управления спонсорами в админке"""
+    kb = InlineKeyboardMarkup()
+    
+    # Кнопка добавления спонсора
+    kb.add(InlineKeyboardButton(text=locale["admin_add_sponsor_button"], callback_data="add_sponsor"))
+    
+    # Кнопка возврата в админ-панель
+    kb.add(InlineKeyboardButton(text=locale["back_to_admin_panel"], callback_data="back_to_admin"))
+    
+    return kb
+
+def admin_sponsor_item_keyboard(locale, sponsor_id):
+    """Клавиатура для управления отдельным спонсором"""
+    kb = InlineKeyboardMarkup()
+    
+    # Кнопки управления спонсором
+    kb.add(
+        InlineKeyboardButton(
+            text=locale["admin_toggle_sponsor_button"],
+            callback_data=f"toggle_sponsor:{sponsor_id}"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale["admin_delete_sponsor_button"],
+            callback_data=f"delete_sponsor:{sponsor_id}"
+        )
+    )
+    
+    # Кнопка возврата к списку спонсоров
+    kb.add(
+        InlineKeyboardButton(
+            text=locale["admin_back_to_sponsors"],
+            callback_data="manage_sponsors"
+        )
+    )
+    
+    return kb
+
+def admin_sponsor_confirm_delete_keyboard(locale, sponsor_id):
+    """Клавиатура для подтверждения удаления спонсора"""
+    kb = InlineKeyboardMarkup()
+    
+    # Кнопки подтверждения/отмены
+    kb.row(
+        InlineKeyboardButton(
+            text=locale["confirm"],
+            callback_data=f"confirm_delete_sponsor:{sponsor_id}"
+        ),
+        InlineKeyboardButton(
+            text=locale["cancel"],
+            callback_data=f"cancel_delete_sponsor:{sponsor_id}"
+        )
+    )
+    
+    return kb
+
+def back_to_menu_keyboard(locale):
+    """Клавиатура с кнопкой возврата в меню"""
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(text=locale["back_to_menu"], callback_data="back_to_menu"))
     return kb

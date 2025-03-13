@@ -587,19 +587,19 @@ async def process_report_selection(callback: types.CallbackQuery, locale):
                 await callback.message.bot.send_message(
                     callback.from_user.id,
                     confirm_text,
-                    reply_markup=report_confirmation_keyboard(announcement_id, announcement_type, reason)
+                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
                 )
             else:
                 await callback.message.edit_text(
                     confirm_text,
-                    reply_markup=report_confirmation_keyboard(announcement_id, announcement_type, reason)
+                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
                 )
         except Exception:
             # На случай ошибок отправляем новое сообщение
             await callback.message.bot.send_message(
                 callback.from_user.id,
                 confirm_text,
-                reply_markup=report_confirmation_keyboard(announcement_id, announcement_type, reason)
+                reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
             )
 
 async def process_back_report(callback: types.CallbackQuery, locale):

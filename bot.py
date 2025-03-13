@@ -12,6 +12,7 @@ from handlers.premium import register_handlers_premium
 from handlers.report import register_handlers_report
 from handlers.achievements import register_handlers_achievements
 from handlers.admin import register_handlers_admin
+from handlers.sponsors import register_handlers_sponsors
 from utils.localization import get_locale
 
 # Настройка логирования
@@ -44,14 +45,15 @@ def register_all_handlers():
             ("announcement", register_handlers_announcement),
             ("crystals", register_handlers_crystals),
             ("premium", register_handlers_premium),
-            ("report", register_handlers_report)
+            ("report", register_handlers_report),
+            ("sponsors", register_handlers_sponsors)  # Добавляем обработчики спонсоров
         ]
         
         for name, register_func in handlers:
             try:
                 logger.info(f"Registering {name} handlers...")
                 if name == "admin":
-                    register_func(dp)  # Админ хендлеры не требуют locale
+                    register_func(dp, locale)  # Передаем locale для админ хендлеров
                 else:
                     register_func(dp, locale)
                 logger.info(f"{name} handlers registered successfully")

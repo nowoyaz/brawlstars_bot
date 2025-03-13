@@ -4,6 +4,27 @@ from datetime import timezone
 from database.session import SessionLocal
 from database.models import User, Announcement, Favorite, Report, Referral
 
+async def check_channel_subscription(bot, user_id: int, channel_id: str) -> bool:
+    """
+    Проверяет, подписан ли пользователь на канал
+    
+    Args:
+        bot: Объект бота
+        user_id: ID пользователя
+        channel_id: ID канала или юзернейм канала
+    
+    Returns:
+        bool: True, если пользователь подписан, иначе False
+    """
+    try:
+        # Попытка получить информацию о подписке пользователя
+        member = await bot.get_chat_member(channel_id, user_id)
+        # Проверяем, что пользователь не исключен из канала (left, kicked, banned)
+        return member.status not in ['left', 'kicked', 'banned']
+    except Exception as e:
+        print(f"Ошибка при проверке подписки: {str(e)}")
+        return False  # В случае ошибки считаем, что пользователь не подписан
+
 def load_locale(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -113,7 +134,7 @@ def ensure_user_exists(user_id, username):
     session = SessionLocal()
     user = session.query(User).filter(User.id == user_id).first()
     if not user:
-        user = User(id=user_id, username=username, crystals=1000, created_at=datetime.datetime.now(timezone.utc))
+        user = User(id=user_id, tg_id=user_id, username=username, crystals=1000, created_at=datetime.datetime.now(timezone.utc))
         session.add(user)
         session.commit()
     session.close()

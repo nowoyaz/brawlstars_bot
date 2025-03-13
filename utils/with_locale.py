@@ -100,7 +100,7 @@ def ensure_user_exists(user_id, username):
     session = SessionLocal()
     user = session.query(User).filter(User.id == user_id).first()
     if not user:
-        user = User(id=user_id, username=username, crystals=1000, created_at=datetime.datetime.utcnow())
+        user = User(id=user_id, tg_id=user_id, username=username, crystals=1000, created_at=datetime.datetime.utcnow())
         session.add(user)
         session.commit()
     session.close()

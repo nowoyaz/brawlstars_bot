@@ -23,7 +23,7 @@ async def show_achievements(callback: types.CallbackQuery, locale):
             user = db.query(User).filter(User.user_id == callback.from_user.id).first()
             if not user:
                 logging.info(f"Creating new user with ID {callback.from_user.id}")
-                user = User(user_id=callback.from_user.id)
+                user = User(id=callback.from_user.id, tg_id=callback.from_user.id)
                 db.add(user)
                 db.commit()
             
