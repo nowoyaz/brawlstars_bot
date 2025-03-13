@@ -34,6 +34,9 @@ from keyboards.inline_keyboard import (
 )
 from config import ADMIN_ID
 from utils.helpers import get_user_language
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ----- Меню поиска -----
 
@@ -54,19 +57,77 @@ async def process_search_club_menu(callback: types.CallbackQuery, locale):
 async def process_my_announcement(callback: types.CallbackQuery, locale, announcement_type: str):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
+    
+    # Получаем данные о статусе премиума и объявлениях пользователя
+    is_premium = is_user_premium(callback.from_user.id)
+    
     # Если пользователь не премиум, проверяем наличие объявления в другой категории
-    if not is_user_premium(callback.from_user.id):
+    if not is_premium:
         opposite_type = "club" if announcement_type == "team" else "team"
         opposite = get_user_announcement(callback.from_user.id, opposite_type)
         if opposite:
-            await callback.message.edit_text(f"Вы уже создали объявление в категории '{opposite_type}'.", reply_markup=inline_main_menu_keyboard(locale))
+            await callback.message.edit_text(
+                locale["no_premium_announcement_limit_reached"],
+                reply_markup=inline_main_menu_keyboard(locale)
+            )
             return
-    announcement = get_user_announcement(callback.from_user.id, announcement_type)
-    if announcement:
-        text = display_announcement_with_keyword(announcement, locale)
-        media = types.InputMediaPhoto(announcement["image_id"], caption=text)
-        await callback.message.edit_media(media, reply_markup=announcement_view_keyboard(locale))
+    
+    # Получаем объявления пользователя данного типа
+    announcements = get_user_announcement(callback.from_user.id, announcement_type, get_all=True)
+    
+    if announcements:
+        # Если объявлений несколько (у премиум-пользователя), показываем список
+        if is_premium and len(announcements) > 1:
+            # Создаем клавиатуру для выбора объявления
+            kb = types.InlineKeyboardMarkup(row_width=1)
+            
+            for i, announcement in enumerate(announcements, 1):
+                created_at = announcement["created_at"]
+                kb.add(types.InlineKeyboardButton(
+                    text=f"Объявление {i} от {created_at}", 
+                    callback_data=f"view_my_announcement:{announcement['id']}"
+                ))
+            
+            if len(announcements) < 2:  # Если объявлений меньше максимума
+                kb.add(types.InlineKeyboardButton(
+                    text=locale["button_create_new"], 
+                    callback_data=f"create_new_{announcement_type}"
+                ))
+                
+            kb.add(types.InlineKeyboardButton(
+                text=locale["button_back"], 
+                callback_data="back_to_search_menu"
+            ))
+            
+            await callback.message.edit_text(
+                locale["my_announcements_list"].format(count=len(announcements), type=announcement_type),
+                reply_markup=kb
+            )
+        else:
+            # Если объявление одно, сразу показываем его
+            announcement = announcements[0]
+            text = display_announcement_with_keyword(announcement, locale)
+            try:
+                media_type = announcement.get("media_type", "photo")
+                
+                if media_type == "photo":
+                    media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+                elif media_type == "video":
+                    media = types.InputMediaVideo(announcement["image_id"], caption=text)
+                elif media_type == "animation":
+                    media = types.InputMediaAnimation(announcement["image_id"], caption=text)
+                else:
+                    media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+                    
+                await callback.message.edit_media(media, reply_markup=announcement_view_keyboard(locale))
+            except Exception as e:
+                logger.error(f"Error showing announcement: {str(e)}")
+                await callback.message.edit_text(
+                    f"Ошибка при отображении объявления: {str(e)}",
+                    reply_markup=inline_main_menu_keyboard(locale)
+                )
     else:
+        # Если объявлений нет, предлагаем создать новое
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
         kb.add(types.InlineKeyboardButton(text=locale["button_create_new"], callback_data=f"create_new_{announcement_type}"))
@@ -1177,38 +1238,41 @@ async def my_announcement_team(callback: types.CallbackQuery, locale, state: FSM
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     
-    announcement = get_user_announcement(callback.from_user.id, "team")
-    if announcement:
+    # Проверяем, есть ли у пользователя премиум
+    has_premium = is_user_premium(callback.from_user.id)
+    
+    # Получаем все объявления пользователя (до 2-х для премиум)
+    announcements = get_user_announcement(callback.from_user.id, "team", get_all=True)
+    
+    if announcements:
         try:
             await callback.message.delete()
         except Exception:
             pass
-            
-        text = display_announcement_with_keyword(announcement, locale)
         
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await callback.message.bot.send_photo(
-                chat_id=callback.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
-        elif media_type == "video":
-            await callback.message.bot.send_video(
-                chat_id=callback.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
-        else:  # animation (GIF)
-            await callback.message.bot.send_animation(
-                chat_id=callback.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
+        # Создаем список для хранения сообщений об объявлениях
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        
+        # Для каждого объявления создаем кнопку просмотра
+        for ann in announcements:
+            kb.add(types.InlineKeyboardButton(
+                text=f"{locale.get('announcement_view_button', 'Просмотреть объявление')} #{ann['id']}",
+                callback_data=f"view_my_announcement:{ann['id']}"
+            ))
+        
+        # Добавляем кнопку создания нового объявления, если у пользователя премиум и менее 2-х объявлений
+        if has_premium and len(announcements) < 2:
+            kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_team"))
+        
+        # Добавляем кнопку назад
+        kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
+        
+        # Отправляем список объявлений
+        await callback.message.bot.send_message(
+            chat_id=callback.from_user.id,
+            text=locale.get("my_announcements_list", "Ваши объявления о поиске команды:"),
+            reply_markup=kb
+        )
     else:
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_team"))
@@ -1219,38 +1283,41 @@ async def my_announcement_club(callback: types.CallbackQuery, locale, state: FSM
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     
-    announcement = get_user_announcement(callback.from_user.id, "club")
-    if announcement:
+    # Проверяем, есть ли у пользователя премиум
+    has_premium = is_user_premium(callback.from_user.id)
+    
+    # Получаем все объявления пользователя (до 2-х для премиум)
+    announcements = get_user_announcement(callback.from_user.id, "club", get_all=True)
+    
+    if announcements:
         try:
             await callback.message.delete()
         except Exception:
             pass
-            
-        text = display_announcement_with_keyword(announcement, locale)
         
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await callback.message.bot.send_photo(
-                chat_id=callback.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
-        elif media_type == "video":
-            await callback.message.bot.send_video(
-                chat_id=callback.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
-        else:  # animation (GIF)
-            await callback.message.bot.send_animation(
-                chat_id=callback.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_view_keyboard(locale)
-            )
+        # Создаем список для хранения сообщений об объявлениях
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        
+        # Для каждого объявления создаем кнопку просмотра
+        for ann in announcements:
+            kb.add(types.InlineKeyboardButton(
+                text=f"{locale.get('announcement_view_button', 'Просмотреть объявление')} #{ann['id']}",
+                callback_data=f"view_my_announcement:{ann['id']}"
+            ))
+        
+        # Добавляем кнопку создания нового объявления, если у пользователя премиум и менее 2-х объявлений
+        if has_premium and len(announcements) < 2:
+            kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_club"))
+        
+        # Добавляем кнопку назад
+        kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
+        
+        # Отправляем список объявлений
+        await callback.message.bot.send_message(
+            chat_id=callback.from_user.id,
+            text=locale.get("my_announcements_list_club", "Ваши объявления о поиске клуба:"),
+            reply_markup=kb
+        )
     else:
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(text=locale["button_create"], callback_data="create_new_club"))
@@ -1290,7 +1357,7 @@ async def show_report_menu(callback: types.CallbackQuery, locale):
 
 # ----- Регистрация обработчиков -----
 
-def register_search_handlers(dp: Dispatcher, locale):
+def register_handlers_search(dp: Dispatcher, locale):
     # Регистрация обработчиков для поиска команды
     dp.register_callback_query_handler(lambda call: process_search_team_menu(call, locale), lambda c: c.data == "search_team_menu")
     dp.register_callback_query_handler(lambda call: process_search_team_options(call, locale), lambda c: c.data == "search_team_search")
@@ -1313,6 +1380,20 @@ def register_search_handlers(dp: Dispatcher, locale):
     # Регистрация обработчиков для my_announcement
     dp.register_callback_query_handler(lambda call, state: my_announcement_team(call, locale, state), lambda c: c.data == "my_announcement_team", state="*")
     dp.register_callback_query_handler(lambda call, state: my_announcement_club(call, locale, state), lambda c: c.data == "my_announcement_club", state="*")
+    
+    # Регистрируем обработчик для просмотра конкретного объявления пользователя
+    dp.register_callback_query_handler(
+        lambda c, state: process_view_my_announcement(c, locale, state),
+        lambda c: c.data.startswith("view_my_announcement:"),
+        state="*"
+    )
+    
+    # Регистрируем обработчик для удаления объявления
+    dp.register_callback_query_handler(
+        lambda c: delete_announcement(c, locale),
+        lambda c: c.data.startswith("delete_announcement:"),
+        state="*"
+    )
 
     # Общие обработчики
     dp.register_callback_query_handler(lambda call: process_back_to_search_menu(call, locale), lambda c: c.data == "back_to_search_menu")
@@ -1619,7 +1700,14 @@ async def delete_announcement(callback: types.CallbackQuery, locale):
     # Получаем данные из callback
     data = callback.data.split(":")
     announcement_id = int(data[1])
-    announcement_type = data[2]
+    
+    # Получаем объявление из базы
+    announcement_data = get_announcement_by_id(announcement_id)
+    if not announcement_data:
+        await callback.answer("Объявление не найдено", show_alert=True)
+        return
+    
+    announcement_type = announcement_data["announcement_type"]
     
     # Получаем текущего пользователя
     user_id = callback.from_user.id
@@ -1640,17 +1728,13 @@ async def delete_announcement(callback: types.CallbackQuery, locale):
             # Отвечаем пользователю
             await callback.answer(locale["announcement_deleted"], show_alert=True)
             
-            # Редактируем сообщение
+            # Перенаправляем пользователя на соответствующую страницу объявлений
             if announcement_type == "team":
-                await callback.message.edit_text(
-                    locale["search_team_menu_text"],
-                    reply_markup=search_team_menu_keyboard(locale)
-                )
+                await my_announcement_team(callback, locale, None)
             else:
-                await callback.message.edit_text(
-                    locale["search_club_menu_text"],
-                    reply_markup=search_club_menu_keyboard(locale)
-                )
+                await my_announcement_club(callback, locale, None)
+        else:
+            await callback.answer("Вы не можете удалить это объявление", show_alert=True)
     except Exception as e:
         print(f"Error deleting announcement: {e}")
         await callback.answer(locale["error_deleting_announcement"], show_alert=True)
@@ -2490,3 +2574,71 @@ async def process_filtered_search_by_keyword_club(callback: types.CallbackQuery,
         locale["search_filters"],
         reply_markup=search_filters_keyboard(locale, "club", "new")
     )
+
+async def process_view_my_announcement(callback: types.CallbackQuery, locale, state: FSMContext):
+    """Обработчик для просмотра конкретного объявления пользователя"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем ID объявления из callback_data
+    announcement_id = int(callback.data.split(":")[1])
+    
+    # Получаем объявление по ID
+    announcement = get_announcement_by_id(announcement_id)
+    
+    if not announcement or announcement["user_id"] != callback.from_user.id:
+        await callback.message.edit_text(
+            "Объявление не найдено или не принадлежит вам.",
+            reply_markup=inline_main_menu_keyboard(locale)
+        )
+        return
+    
+    # Формируем клавиатуру для просмотра объявления с удалением
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    
+    # Добавляем кнопку удаления
+    kb.add(types.InlineKeyboardButton(
+        text=locale.get("button_delete", "🗑️ Удалить"),
+        callback_data=f"delete_announcement:{announcement_id}"
+    ))
+    
+    # Добавляем кнопку назад к списку объявлений
+    kb.add(types.InlineKeyboardButton(
+        text=locale["button_back"],
+        callback_data=f"my_announcement_{announcement['announcement_type']}"
+    ))
+    
+    # Показываем объявление
+    text = display_announcement_with_keyword(announcement, locale)
+    
+    try:
+        media_type = announcement.get("media_type", "photo")
+        
+        if media_type == "photo":
+            media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+        elif media_type == "video":
+            media = types.InputMediaVideo(announcement["image_id"], caption=text)
+        elif media_type == "animation":
+            media = types.InputMediaAnimation(announcement["image_id"], caption=text)
+        else:
+            media = types.InputMediaPhoto(announcement["image_id"], caption=text)
+            
+        await callback.message.edit_media(media, reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Error showing announcement: {str(e)}")
+        await callback.message.edit_text(
+            f"Ошибка при отображении объявления: {str(e)}",
+            reply_markup=inline_main_menu_keyboard(locale)
+        )
+
+def register_search_handlers(dp: Dispatcher, locale):
+    # ... existing code ...
+    
+    # Регистрируем обработчик для просмотра конкретного объявления пользователя
+    dp.register_callback_query_handler(
+        lambda c, state: process_view_my_announcement(c, locale, state),
+        lambda c: c.data.startswith("view_my_announcement:"),
+        state="*"
+    )
+    
+    # ... existing code ...

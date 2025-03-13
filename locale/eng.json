@@ -202,5 +202,13 @@
   "admin_manage_prices": "💸 Manage prices",
   "admin_manage_sponsors": "👥 Manage sponsors",
   "already_subscribed": "✅ You're already subscribed to this sponsor!",
-  "admin_confirm_delete_sponsor": "❓ Are you sure you want to delete this sponsor?"
+  "admin_confirm_delete_sponsor": "❓ Are you sure you want to delete this sponsor?",
+  
+  "premium_announcement_limit": "🔥 With premium status you can create up to 2 announcements of each type (team/club).",
+  "no_premium_announcement_limit": "⚠️ Without premium status you can create only one announcement.",
+  "premium_announcement_limit_reached": "❌ You already have the maximum number of announcements of this type (2). Delete one of the existing announcements to create a new one.",
+  "no_premium_announcement_limit_reached": "❌ You already have an announcement. To create multiple announcements, get premium status.",
+  "my_announcements_list": "📋 Your team search announcements:",
+  "my_announcements_list_club": "📋 Your club search announcements:",
+  "announcement_view_button": "��️ View announcement"
 }

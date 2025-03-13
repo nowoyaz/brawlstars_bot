@@ -96,12 +96,34 @@ def save_announcement(user_id: int, announcement_type: str, image_id: str, descr
     session.commit()
     session.close()
 
-def get_user_announcement(user_id, announcement_type: str) -> dict:
+def get_user_announcement(user_id, announcement_type: str, get_all=False) -> dict:
     session = SessionLocal()
-    announcement = session.query(Announcement).filter(
+    query = session.query(Announcement).filter(
         Announcement.user_id == user_id,
         Announcement.announcement_type == announcement_type
-    ).order_by(Announcement.created_at.desc()).first()
+    ).order_by(Announcement.created_at.desc())
+    
+    # Если нужно получить все объявления пользователя (не более 2-х)
+    if get_all:
+        announcements = query.limit(2).all()
+        session.close()
+        if announcements:
+            return [
+                {
+                    "id": announcement.id,
+                    "user_id": announcement.user_id,
+                    "image_id": announcement.image_id,
+                    "media_type": announcement.media_type,
+                    "description": announcement.description,
+                    "keyword": announcement.keyword,
+                    "created_at": announcement.created_at.strftime("%Y-%m-%d %H:%M")
+                }
+                for announcement in announcements
+            ]
+        return []
+    
+    # Если нужно получить только одно объявление (для обратной совместимости)
+    announcement = query.first()
     session.close()
     if announcement:
         return {
@@ -440,3 +462,35 @@ def give_daily_crystals(user_id: int) -> tuple[bool, int]:
     session.commit()
     session.close()
     return True, crystals_amount
+
+def can_create_announcement(user_id: int, announcement_type: str) -> bool:
+    """
+    Проверяет, может ли пользователь создать новое объявление указанного типа.
+    
+    Правила:
+    - Пользователи без премиума могут иметь только одно объявление любого типа
+    - Премиум-пользователи могут иметь до 2-х объявлений каждого типа
+    
+    Args:
+        user_id (int): ID пользователя
+        announcement_type (str): Тип объявления ('team' или 'club')
+        
+    Returns:
+        bool: True, если пользователь может создать новое объявление, иначе False
+    """
+    # Проверяем статус премиум пользователя
+    has_premium = is_user_premium(user_id)
+    
+    # Получаем все объявления пользователя данного типа
+    announcements = get_user_announcement(user_id, announcement_type, get_all=True)
+    
+    # Если пользователь имеет премиум, он может создать до 2-х объявлений каждого типа
+    if has_premium:
+        return len(announcements) < 2
+    
+    # Если пользователь без премиума, проверяем наличие объявлений любого типа
+    team_announcements = get_user_announcement(user_id, "team", get_all=True)
+    club_announcements = get_user_announcement(user_id, "club", get_all=True)
+    
+    # Пользователи без премиума могут иметь только одно объявление любого типа
+    return len(team_announcements) + len(club_announcements) == 0

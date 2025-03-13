@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import save_announcement, get_user_language, is_user_premium
+from utils.helpers import save_announcement, get_user_language, is_user_premium, can_create_announcement
 from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard, rules_keyboard
 from states.announcement import AnnouncementState
 
@@ -18,6 +18,26 @@ class AnnouncementStates(StatesGroup):
 
 async def cmd_create_announcement(message: types.Message, announcement_type: str, locale, state: FSMContext):
     """Начало создания нового объявления"""
+    # Получаем локализацию пользователя
+    user_locale = get_user_language(message.from_user.id)
+    
+    # Проверяем, может ли пользователь создать новое объявление данного типа
+    if not can_create_announcement(message.from_user.id, announcement_type):
+        # Пользователь уже имеет максимальное количество объявлений
+        if is_user_premium(message.from_user.id):
+            # У премиум-пользователя уже есть 2 объявления этого типа
+            await message.answer(
+                user_locale["premium_announcement_limit_reached"],
+                reply_markup=inline_main_menu_keyboard(user_locale)
+            )
+        else:
+            # У обычного пользователя уже есть объявление
+            await message.answer(
+                user_locale["no_premium_announcement_limit_reached"],
+                reply_markup=inline_main_menu_keyboard(user_locale)
+            )
+        return
+    
     # Сохраняем тип объявления в состояние
     await state.update_data(announcement_type=announcement_type)
     
