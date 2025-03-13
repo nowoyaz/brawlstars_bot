@@ -1,5 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import CHANNEL_LINK, SUPPORT_LINK
+from config import CHANNEL_LINK, SUPPORT_LINK, MANAGER_LINK
 
 def start_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=2)
@@ -293,4 +293,45 @@ def rules_keyboard(locale, announcement_type: str):
             callback_data=f"accept_rules_{announcement_type}"
         )
     )
+    return kb
+
+def premium_keyboard(locale, is_premium=False):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(text=locale["button_price"], callback_data="premium_prices"))
+    kb.add(InlineKeyboardButton(text=locale["button_contact_manager"], url=MANAGER_LINK))
+    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main"))
+    return kb
+
+def premium_prices_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(text=locale["button_contact_manager"], url=MANAGER_LINK))
+    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="premium"))
+    return kb
+
+def admin_premium_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(text=locale["button_change_month_price"], callback_data="change_price:month"))
+    kb.add(InlineKeyboardButton(text=locale["button_change_half_year_price"], callback_data="change_price:half_year"))
+    kb.add(InlineKeyboardButton(text=locale["button_change_year_price"], callback_data="change_price:year"))
+    kb.add(InlineKeyboardButton(text=locale["button_change_forever_price"], callback_data="change_price:forever"))
+    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_admin"))
+    return kb
+
+def admin_panel_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(text="Выдать премиум", callback_data="give_premium"))
+    kb.add(InlineKeyboardButton(text="Управление ценами", callback_data="manage_prices"))
+    return kb
+
+def admin_premium_duration_keyboard(locale):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text="1 месяц", callback_data="premium_1month"),
+        InlineKeyboardButton(text="6 месяцев", callback_data="premium_6months")
+    )
+    kb.add(
+        InlineKeyboardButton(text="1 год", callback_data="premium_1year"),
+        InlineKeyboardButton(text="Навсегда", callback_data="premium_forever")
+    )
+    kb.add(InlineKeyboardButton(text="Назад", callback_data="back_to_admin"))
     return kb

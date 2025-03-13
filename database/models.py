@@ -12,6 +12,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, unique=True, index=True)
     username = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
+    premium_end_date = Column(DateTime, nullable=True)
     crystals = Column(Integer, default=100)
     language = Column(String, default="ru")
     blocked = Column(Boolean, default=False)
@@ -63,4 +64,11 @@ class CrystalTransaction(Base):
     receiver_id = Column(Integer, ForeignKey("users.id"))
     amount = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class PremiumPrice(Base):
+    __tablename__ = "premium_prices"
+    id = Column(Integer, primary_key=True, index=True)
+    duration_type = Column(String, nullable=False)  # month, half_year, year, forever
+    price = Column(Integer, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

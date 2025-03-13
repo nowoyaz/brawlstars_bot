@@ -11,7 +11,7 @@ from middleware.ban_middleware import BanMiddleware
 from database.session import init_db
 from utils.helpers import load_locale
 # Импортируем обработчики
-from handlers import start, menu, search, report, premium, crystals, announcement, gift, additional, favorites, language
+from handlers import start, menu, search, report, premium, crystals, announcement, gift, additional, favorites, language, admin
 logging.basicConfig(level=logging.INFO)
 
 LOCALE = load_locale("locale/ru.json")
@@ -34,6 +34,7 @@ gift.register_handlers_gift(dp, LOCALE)
 additional.register_handlers_additional(dp, LOCALE)
 favorites.register_handlers_favorites(dp, LOCALE)
 language.register_handlers_language(dp, LOCALE)
+admin.register_handlers_admin(dp, LOCALE)
 
 async def on_startup(dp):
     init_db()
