@@ -4,7 +4,7 @@ from config import CHANNEL_LINK, SUPPORT_LINK
 def start_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(text=locale["button_start"], callback_data="menu"),
+        InlineKeyboardButton(text=locale["button_start"], callback_data="check_subscription"),
         InlineKeyboardButton(text=locale["button_channel"], url=CHANNEL_LINK)
     )
     return kb

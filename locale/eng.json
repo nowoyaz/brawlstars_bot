@@ -1,9 +1,11 @@
 {
   "start_text": "👋 Hi! I'm a bot for finding teams and clubs in Brawl Stars.\nPress \"Start\" to learn about all my features. 🔮",
   "language_changed": "🌐 Language successfully changed to English!",
-  "button_start": "🚀 Start",
+  "button_start": "✅ Check Subscription",
   "button_channel": "📣 Our Channel",
   "menu_text": "💬 Choose one of the sections:",
+  "subscription_required": "❗️ You need to subscribe to our channel to use this bot.\n\nPlease subscribe to {channel_link} and press the \"Check Subscription\" button",
+  "error_checking_subscription": "❌ An error occurred while checking your subscription. Please try again later.",
   
   "button_search_team": "🔍 Search Team",
   "button_search_club": "🔍 Search Club",
