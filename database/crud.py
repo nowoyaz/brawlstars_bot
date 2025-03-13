@@ -1,6 +1,6 @@
 import datetime
 from sqlalchemy import select, update, desc, or_, func
-from database.models import User, PremiumPrice, Sponsor, UserSponsorSubscription
+from database.models import User, PremiumPrice, Sponsor, UserSponsorSubscription, PromoCode, PromoUse
 from database.session import SessionLocal
 import logging
 
@@ -82,17 +82,15 @@ def update_premium_price(duration_days: int, new_price: float):
         session.close()
 
 # Функции для работы со спонсорами
-def get_sponsors(only_active=True):
+def get_sponsors(is_active_only=True):
     """Получает список спонсоров"""
     session = SessionLocal()
-    try:
-        query = session.query(Sponsor)
-        if only_active:
-            query = query.filter(Sponsor.is_active == True)
-        sponsors = query.all()
-        return sponsors
-    finally:
-        session.close()
+    query = session.query(Sponsor)
+    if is_active_only:
+        query = query.filter(Sponsor.is_active == True)
+    sponsors = query.all()
+    session.close()
+    return sponsors
 
 def get_sponsor_by_id(sponsor_id: int):
     """Получить спонсора по ID"""
@@ -118,7 +116,7 @@ def add_sponsor(name: str, link: str, reward: int = 10, channel_id: str = None):
     finally:
         session.close()
 
-def update_sponsor(sponsor_id: int, name: str = None, link: str = None, reward: int = None, channel_id: str = None, is_active: bool = None):
+def update_sponsor(sponsor_id: int, **kwargs):
     """Обновляет данные спонсора"""
     session = SessionLocal()
     try:
@@ -126,17 +124,10 @@ def update_sponsor(sponsor_id: int, name: str = None, link: str = None, reward: 
         if not sponsor:
             return False
             
-        if name is not None:
-            sponsor.name = name
-        if link is not None:
-            sponsor.link = link
-        if reward is not None:
-            sponsor.reward = reward
-        if channel_id is not None:
-            sponsor.channel_id = channel_id
-        if is_active is not None:
-            sponsor.is_active = is_active
-            
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(sponsor, key, value)
+        
         session.commit()
         return True
     finally:
@@ -220,6 +211,14 @@ def get_user_by_id(user_id: int):
     finally:
         session.close()
 
+# Алиас для get_user_by_id для обратной совместимости
+def get_user(user_id: int):
+    """
+    Алиас для функции get_user_by_id
+    Получает пользователя по его Telegram ID
+    """
+    return get_user_by_id(user_id)
+
 def add_coins_to_user(user_id: int, coins: int):
     """Добавляет монеты пользователю"""
     session = SessionLocal()
@@ -232,4 +231,242 @@ def add_coins_to_user(user_id: int, coins: int):
         session.commit()
         return True
     finally:
-        session.close() 
+        session.close()
+
+# ----- Функции для работы с промокодами -----
+
+def add_promo_code(code: str, duration_days: int, max_uses: int = 1, expires_at: datetime = None):
+    """
+    Добавляет новый промокод
+    
+    Args:
+        code (str): Промокод (должен быть уникальным)
+        duration_days (int): Срок действия премиума в днях
+        max_uses (int, optional): Максимальное количество использований. По умолчанию 1.
+        expires_at (datetime, optional): Срок действия самого промокода. По умолчанию None (бессрочно).
+    
+    Returns:
+        PromoCode: Созданный промокод или None в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        # Проверяем, что промокод уникальный
+        existing = session.query(PromoCode).filter(PromoCode.code == code).first()
+        if existing:
+            session.close()
+            return None
+        
+        promo = PromoCode(
+            code=code,
+            duration_days=duration_days,
+            max_uses=max_uses,
+            expires_at=expires_at,
+            is_active=True
+        )
+        session.add(promo)
+        session.commit()
+        session.refresh(promo)
+        result = promo
+    except Exception as e:
+        print(f"Error adding promo code: {e}")
+        session.rollback()
+        result = None
+    finally:
+        session.close()
+    return result
+
+def get_promo_codes(include_inactive=False):
+    """
+    Получает список всех промокодов
+    
+    Args:
+        include_inactive (bool, optional): Включать ли неактивные промокоды. По умолчанию False.
+    
+    Returns:
+        List[PromoCode]: Список промокодов
+    """
+    session = SessionLocal()
+    query = session.query(PromoCode)
+    if not include_inactive:
+        query = query.filter(PromoCode.is_active == True)
+    promos = query.all()
+    session.close()
+    return promos
+
+def get_promo_code_by_id(promo_id: int):
+    """
+    Получает промокод по ID
+    
+    Args:
+        promo_id (int): ID промокода
+    
+    Returns:
+        PromoCode: Найденный промокод или None
+    """
+    session = SessionLocal()
+    promo = session.query(PromoCode).filter(PromoCode.id == promo_id).first()
+    session.close()
+    return promo
+
+def get_promo_code_by_code(code: str):
+    """
+    Получает промокод по коду
+    
+    Args:
+        code (str): Код промокода
+    
+    Returns:
+        PromoCode: Найденный промокод или None
+    """
+    session = SessionLocal()
+    promo = session.query(PromoCode).filter(PromoCode.code == code).first()
+    session.close()
+    return promo
+
+def delete_promo_code(promo_id: int):
+    """
+    Удаляет промокод по ID
+    
+    Args:
+        promo_id (int): ID промокода
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        promo = session.query(PromoCode).filter(PromoCode.id == promo_id).first()
+        if not promo:
+            session.close()
+            return False
+        
+        session.delete(promo)
+        session.commit()
+        result = True
+    except Exception as e:
+        print(f"Error deleting promo code: {e}")
+        session.rollback()
+        result = False
+    finally:
+        session.close()
+    return result
+
+def deactivate_promo_code(promo_id: int):
+    """
+    Деактивирует промокод по ID (не удаляя его)
+    
+    Args:
+        promo_id (int): ID промокода
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        promo = session.query(PromoCode).filter(PromoCode.id == promo_id).first()
+        if not promo:
+            session.close()
+            return False
+        
+        promo.is_active = False
+        session.commit()
+        result = True
+    except Exception as e:
+        print(f"Error deactivating promo code: {e}")
+        session.rollback()
+        result = False
+    finally:
+        session.close()
+    return result
+
+def use_promo_code(user_id: int, code: str):
+    """
+    Использует промокод пользователем
+    
+    Args:
+        user_id (int): ID пользователя
+        code (str): Код промокода
+    
+    Returns:
+        tuple: (success, message, duration_days)
+        - success (bool): True если промокод успешно использован
+        - message (str): Сообщение об успехе или ошибке
+        - duration_days (int): Срок действия премиума в днях или None
+    """
+    session = SessionLocal()
+    try:
+        # Проверяем существование промокода
+        promo = session.query(PromoCode).filter(PromoCode.code == code).first()
+        if not promo:
+            session.close()
+            return False, "Промокод не найден", None
+        
+        # Проверяем активность промокода
+        if not promo.is_active:
+            session.close()
+            return False, "Этот промокод уже неактивен", None
+        
+        # Проверяем срок действия промокода
+        if promo.expires_at and promo.expires_at < datetime.datetime.now():
+            session.close()
+            return False, "Срок действия промокода истек", None
+        
+        # Проверяем количество использований
+        if promo.uses_count >= promo.max_uses:
+            session.close()
+            return False, "Промокод уже использован максимальное число раз", None
+        
+        # Проверяем, не использовал ли пользователь уже этот промокод
+        existing_use = session.query(PromoUse).filter(
+            PromoUse.promo_id == promo.id,
+            PromoUse.user_id == user_id
+        ).first()
+        if existing_use:
+            session.close()
+            return False, "Вы уже использовали этот промокод", None
+        
+        # Используем промокод
+        promo_use = PromoUse(promo_id=promo.id, user_id=user_id)
+        session.add(promo_use)
+        
+        # Увеличиваем счетчик использований
+        promo.uses_count += 1
+        
+        # Если достигнуто максимальное количество использований, деактивируем промокод
+        if promo.uses_count >= promo.max_uses:
+            promo.is_active = False
+        
+        # Применяем премиум-статус пользователю
+        user = session.query(User).filter(User.id == user_id).first()
+        if not user:
+            session.rollback()
+            session.close()
+            return False, "Пользователь не найден", None
+        
+        # Определяем дату окончания премиума
+        now = datetime.datetime.now()
+        if not user.is_premium:
+            # Если у пользователя нет премиума, устанавливаем новую дату
+            user.is_premium = True
+            user.premium_end_date = now + datetime.timedelta(days=promo.duration_days)
+            # Синхронизируем поле premium_until с premium_end_date
+            user.premium_until = user.premium_end_date
+        else:
+            # Если у пользователя уже есть премиум, продлеваем его
+            if user.premium_end_date and user.premium_end_date > now:
+                user.premium_end_date = user.premium_end_date + datetime.timedelta(days=promo.duration_days)
+            else:
+                user.premium_end_date = now + datetime.timedelta(days=promo.duration_days)
+            # Синхронизируем поле premium_until с premium_end_date
+            user.premium_until = user.premium_end_date
+        
+        session.commit()
+        return True, "Промокод успешно активирован", promo.duration_days
+    except Exception as e:
+        print(f"Error using promo code: {e}")
+        session.rollback()
+        return False, f"Произошла ошибка при активации промокода", None
+    finally:
+        session.close()
+
+# ----- Конец функций для работы с промокодами ----- 

@@ -3,7 +3,7 @@ from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from config import ADMIN_IDS
 from keyboards.inline_keyboard import admin_panel_keyboard, admin_premium_duration_keyboard, admin_premium_keyboard, admin_sponsors_keyboard, admin_sponsor_item_keyboard, admin_sponsor_confirm_delete_keyboard
-from database.crud import update_user_premium, get_premium_prices, update_premium_price, get_sponsors, add_sponsor, update_sponsor, delete_sponsor
+from database.crud import update_user_premium, get_premium_prices, update_premium_price, get_sponsors, add_sponsor, update_sponsor, delete_sponsor, add_promo_code, get_promo_codes, delete_promo_code, deactivate_promo_code
 from utils.helpers import get_user_language
 import datetime
 import logging
@@ -21,6 +21,12 @@ class AdminStates(StatesGroup):
     waiting_for_sponsor_channel_id = State()
     waiting_for_sponsor_reward = State()
     editing_sponsor = State()
+    
+    # Состояния для промокодов
+    waiting_for_promo_code = State()
+    waiting_for_promo_duration = State()
+    waiting_for_promo_uses = State()
+    waiting_for_promo_expiry = State()
 
 async def cmd_admin_panel(message: types.Message, locale):
     if message.from_user.id not in ADMIN_IDS:
@@ -440,6 +446,405 @@ async def process_cancel_delete_sponsor(callback: types.CallbackQuery, state: FS
         # Если спонсор не найден, возвращаемся к списку спонсоров
         await process_manage_sponsors(callback, state, locale)
 
+# Обработчики для промокодов
+
+async def process_manage_promo_codes(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик для управления промокодами"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем список промокодов
+    promo_codes = get_promo_codes(include_inactive=True)
+    
+    # Создаем клавиатуру
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_add_promo", "➕ Добавить промокод"), callback_data="add_promo_code"))
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("back_to_admin_panel", "🔙 Назад в админ-панель"), callback_data="back_to_admin"))
+    
+    if not promo_codes:
+        text = user_locale.get("admin_promo_title", "🎟️ Управление промокодами") + "\n\n" + user_locale.get("no_promo_codes", "Промокоды не найдены.")
+        await callback.message.edit_text(text, reply_markup=kb)
+        return
+    
+    # Формируем текст со списком промокодов
+    text = user_locale.get("admin_promo_title", "🎟️ Управление промокодами") + "\n\n" + user_locale.get("admin_promo_list", "Список промокодов:")
+    
+    for i, promo in enumerate(promo_codes, 1):
+        # Формат: №. Код (срок действия) - статус [использовано/максимум]
+        status = user_locale.get("active", "✓ Активен") if promo.is_active else user_locale.get("inactive", "✗ Неактивен")
+        
+        # Форматируем срок действия промокода
+        if promo.expires_at:
+            expiry_date = promo.expires_at.strftime("%d.%m.%Y")
+            expiry_text = user_locale.get("promo_expires", "до {date}").format(date=expiry_date)
+        else:
+            expiry_text = user_locale.get("promo_no_expiry", "бессрочно")
+        
+        text += f"\n{i}. <code>{promo.code}</code> ({promo.duration_days} дн., {expiry_text}) - {status} [{promo.uses_count}/{promo.max_uses}]"
+        
+        # Добавляем кнопки управления для каждого промокода
+        promo_kb = types.InlineKeyboardMarkup(row_width=2)
+        
+        # Кнопка деактивации/активации
+        if promo.is_active:
+            promo_kb.insert(types.InlineKeyboardButton(
+                text=user_locale.get("button_deactivate_promo", "🚫 Деактивировать"), 
+                callback_data=f"deactivate_promo:{promo.id}"
+            ))
+        else:
+            promo_kb.insert(types.InlineKeyboardButton(
+                text=user_locale.get("button_activate_promo", "✅ Активировать"), 
+                callback_data=f"activate_promo:{promo.id}"
+            ))
+        
+        # Кнопка удаления
+        promo_kb.insert(types.InlineKeyboardButton(
+            text=user_locale.get("button_delete_promo", "🗑️ Удалить"), 
+            callback_data=f"delete_promo:{promo.id}"
+        ))
+        
+        # Отправляем отдельное сообщение для каждого промокода с кнопками
+        if i == 1:
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            await callback.message.answer(f"{i}. <code>{promo.code}</code> ({promo.duration_days} дн., {expiry_text}) - {status} [{promo.uses_count}/{promo.max_uses}]", reply_markup=promo_kb, parse_mode="HTML")
+        else:
+            await callback.message.bot.send_message(
+                callback.from_user.id,
+                f"{i}. <code>{promo.code}</code> ({promo.duration_days} дн., {expiry_text}) - {status} [{promo.uses_count}/{promo.max_uses}]",
+                reply_markup=promo_kb,
+                parse_mode="HTML"
+            )
+
+async def process_add_promo_code(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик для добавления нового промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    await callback.message.edit_text(
+        user_locale.get("admin_add_promo_code", "🎟️ Добавление нового промокода") + 
+        "\n\n" + 
+        user_locale.get("admin_enter_promo_code", "Введите текст промокода (только латинские буквы и цифры):"),
+        reply_markup=types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+        )
+    )
+    
+    await AdminStates.waiting_for_promo_code.set()
+
+async def process_promo_code_input(message: types.Message, state: FSMContext, locale):
+    """Обработчик ввода текста промокода"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    user_locale = get_user_language(message.from_user.id)
+    
+    # Проверяем, что промокод корректный (только латинские буквы и цифры)
+    promo_code = message.text.strip().upper()
+    if not promo_code.isalnum():
+        await message.answer(
+            user_locale.get("admin_invalid_promo_code", "❌ Промокод должен содержать только латинские буквы и цифры. Попробуйте еще раз:")
+        )
+        return
+    
+    # Сохраняем промокод в состоянии
+    await state.update_data(promo_code=promo_code)
+    
+    # Запрашиваем срок действия премиума
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton(text="7 дней", callback_data="promo_duration:7"),
+        types.InlineKeyboardButton(text="30 дней", callback_data="promo_duration:30"),
+        types.InlineKeyboardButton(text="90 дней", callback_data="promo_duration:90"),
+        types.InlineKeyboardButton(text="365 дней", callback_data="promo_duration:365")
+    )
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_custom", "Другой срок"), callback_data="promo_duration:custom"))
+    
+    await message.answer(
+        user_locale.get("admin_enter_promo_duration", "Выберите срок действия премиума по промокоду:"),
+        reply_markup=kb
+    )
+    
+    await AdminStates.waiting_for_promo_duration.set()
+
+async def process_promo_duration_selection(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик выбора срока действия промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем выбранный срок
+    duration_str = callback.data.split(":")[1]
+    
+    if duration_str == "custom":
+        # Если выбран произвольный срок, запрашиваем его ввод
+        await callback.message.edit_text(
+            user_locale.get("admin_enter_custom_duration", "Введите срок действия промокода в днях (только число):"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+            )
+        )
+        return
+    
+    # Сохраняем срок действия в состоянии
+    await state.update_data(promo_duration=int(duration_str))
+    
+    # Запрашиваем количество использований
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton(text="1 раз", callback_data="promo_uses:1"),
+        types.InlineKeyboardButton(text="5 раз", callback_data="promo_uses:5"),
+        types.InlineKeyboardButton(text="10 раз", callback_data="promo_uses:10"),
+        types.InlineKeyboardButton(text="100 раз", callback_data="promo_uses:100")
+    )
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_custom", "Другое количество"), callback_data="promo_uses:custom"))
+    
+    await callback.message.edit_text(
+        user_locale.get("admin_enter_promo_uses", "Выберите максимальное количество использований промокода:"),
+        reply_markup=kb
+    )
+    
+    await AdminStates.waiting_for_promo_uses.set()
+
+async def process_custom_duration_input(message: types.Message, state: FSMContext, locale):
+    """Обработчик ввода произвольного срока действия промокода"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    user_locale = get_user_language(message.from_user.id)
+    
+    # Проверяем, что введено число
+    if not message.text.isdigit() or int(message.text) <= 0:
+        await message.answer(
+            user_locale.get("admin_invalid_duration", "❌ Срок действия должен быть положительным числом. Попробуйте еще раз:")
+        )
+        return
+    
+    # Сохраняем срок действия в состоянии
+    await state.update_data(promo_duration=int(message.text))
+    
+    # Запрашиваем количество использований
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton(text="1 раз", callback_data="promo_uses:1"),
+        types.InlineKeyboardButton(text="5 раз", callback_data="promo_uses:5"),
+        types.InlineKeyboardButton(text="10 раз", callback_data="promo_uses:10"),
+        types.InlineKeyboardButton(text="100 раз", callback_data="promo_uses:100")
+    )
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_custom", "Другое количество"), callback_data="promo_uses:custom"))
+    
+    await message.answer(
+        user_locale.get("admin_enter_promo_uses", "Выберите максимальное количество использований промокода:"),
+        reply_markup=kb
+    )
+    
+    await AdminStates.waiting_for_promo_uses.set()
+
+async def process_promo_uses_selection(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик выбора количества использований промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем выбранное количество использований
+    uses_str = callback.data.split(":")[1]
+    
+    if uses_str == "custom":
+        # Если выбрано произвольное количество, запрашиваем его ввод
+        await callback.message.edit_text(
+            user_locale.get("admin_enter_custom_uses", "Введите максимальное количество использований промокода (только число):"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+            )
+        )
+        return
+    
+    # Сохраняем количество использований в состоянии
+    await state.update_data(promo_uses=int(uses_str))
+    
+    # Запрашиваем срок действия самого промокода
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_no_expiry", "Бессрочно"), callback_data="promo_expiry:none"))
+    kb.add(types.InlineKeyboardButton(text="7 дней", callback_data="promo_expiry:7"))
+    kb.add(types.InlineKeyboardButton(text="30 дней", callback_data="promo_expiry:30"))
+    kb.add(types.InlineKeyboardButton(text="90 дней", callback_data="promo_expiry:90"))
+    
+    await callback.message.edit_text(
+        user_locale.get("admin_enter_promo_expiry", "Выберите срок действия самого промокода (через сколько дней он станет недействительным):"),
+        reply_markup=kb
+    )
+    
+    await AdminStates.waiting_for_promo_expiry.set()
+
+async def process_custom_uses_input(message: types.Message, state: FSMContext, locale):
+    """Обработчик ввода произвольного количества использований промокода"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    user_locale = get_user_language(message.from_user.id)
+    
+    # Проверяем, что введено число
+    if not message.text.isdigit() or int(message.text) <= 0:
+        await message.answer(
+            user_locale.get("admin_invalid_uses", "❌ Количество использований должно быть положительным числом. Попробуйте еще раз:")
+        )
+        return
+    
+    # Сохраняем количество использований в состоянии
+    await state.update_data(promo_uses=int(message.text))
+    
+    # Запрашиваем срок действия самого промокода
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_no_expiry", "Бессрочно"), callback_data="promo_expiry:none"))
+    kb.add(types.InlineKeyboardButton(text="7 дней", callback_data="promo_expiry:7"))
+    kb.add(types.InlineKeyboardButton(text="30 дней", callback_data="promo_expiry:30"))
+    kb.add(types.InlineKeyboardButton(text="90 дней", callback_data="promo_expiry:90"))
+    
+    await message.answer(
+        user_locale.get("admin_enter_promo_expiry", "Выберите срок действия самого промокода (через сколько дней он станет недействительным):"),
+        reply_markup=kb
+    )
+    
+    await AdminStates.waiting_for_promo_expiry.set()
+
+async def process_promo_expiry_selection(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик выбора срока действия самого промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    promo_code = data.get("promo_code")
+    promo_duration = data.get("promo_duration")
+    promo_uses = data.get("promo_uses")
+    
+    # Получаем выбранный срок действия промокода
+    expiry_str = callback.data.split(":")[1]
+    expiry_date = None
+    
+    if expiry_str != "none":
+        # Если выбран срок действия, вычисляем дату истечения
+        days = int(expiry_str)
+        expiry_date = datetime.datetime.now() + datetime.timedelta(days=days)
+    
+    try:
+        # Создаем промокод в базе данных
+        promo = add_promo_code(promo_code, promo_duration, promo_uses, expiry_date)
+        
+        if promo:
+            # Если промокод успешно создан, показываем сообщение об успехе
+            expiry_text = user_locale.get("promo_no_expiry", "бессрочно") if not expiry_date else expiry_date.strftime("%d.%m.%Y")
+            
+            success_text = user_locale.get("admin_promo_created", "✅ Промокод успешно создан:") + f"\n\n<code>{promo_code}</code>\n\n"
+            success_text += user_locale.get("admin_promo_details", "Детали:") + "\n"
+            success_text += f"• {user_locale.get('admin_promo_duration', 'Срок действия премиума')}: {promo_duration} дней\n"
+            success_text += f"• {user_locale.get('admin_promo_uses', 'Лимит использований')}: {promo_uses}\n"
+            success_text += f"• {user_locale.get('admin_promo_expiry', 'Срок действия промокода')}: {expiry_text}"
+            
+            await callback.message.edit_text(
+                success_text,
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+                ),
+                parse_mode="HTML"
+            )
+        else:
+            # Если возникла ошибка, показываем сообщение об ошибке
+            await callback.message.edit_text(
+                user_locale.get("admin_promo_error", "❌ Ошибка при создании промокода. Возможно, такой промокод уже существует."),
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+                )
+            )
+    except Exception as e:
+        logger.error(f"Ошибка при создании промокода: {str(e)}")
+        await callback.message.edit_text(
+            user_locale.get("admin_promo_error", "❌ Ошибка при создании промокода: ") + str(e),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+            )
+        )
+    
+    # Сбрасываем состояние
+    await state.finish()
+
+async def process_delete_promo(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик для удаления промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем ID промокода
+    promo_id = int(callback.data.split(":")[1])
+    
+    # Удаляем промокод
+    success = delete_promo_code(promo_id)
+    
+    if success:
+        await callback.message.edit_text(
+            user_locale.get("admin_promo_deleted", "✅ Промокод успешно удален"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+            )
+        )
+    else:
+        await callback.message.edit_text(
+            user_locale.get("admin_promo_delete_error", "❌ Ошибка при удалении промокода"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+            )
+        )
+
+async def process_deactivate_promo(callback: types.CallbackQuery, state: FSMContext, locale):
+    """Обработчик для деактивации промокода"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    user_locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем ID промокода
+    promo_id = int(callback.data.split(":")[1])
+    
+    # Деактивируем промокод
+    success = deactivate_promo_code(promo_id)
+    
+    if success:
+        await callback.message.edit_text(
+            user_locale.get("admin_promo_deactivated", "✅ Промокод успешно деактивирован"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+            )
+        )
+    else:
+        await callback.message.edit_text(
+            user_locale.get("admin_promo_deactivate_error", "❌ Ошибка при деактивации промокода"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"), callback_data="manage_promo_codes")
+            )
+        )
+
 def register_handlers_admin(dp: Dispatcher, locale):
     """Регистрация всех обработчиков админ панели"""
     dp.register_message_handler(lambda message, state: cmd_admin_panel(message, locale), commands=["panel"])
@@ -508,4 +913,49 @@ def register_handlers_admin(dp: Dispatcher, locale):
     dp.register_callback_query_handler(
         lambda c, state: process_cancel_delete_sponsor(c, state, locale),
         lambda c: c.data.startswith("cancel_delete_sponsor:")
+    )
+    
+    # Регистрация обработчиков для промокодов
+    dp.register_callback_query_handler(
+        lambda c, state: process_manage_promo_codes(c, state, locale),
+        lambda c: c.data == "manage_promo_codes"
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_add_promo_code(c, state, locale),
+        lambda c: c.data == "add_promo_code"
+    )
+    dp.register_message_handler(
+        lambda message, state: process_promo_code_input(message, state, locale),
+        state=AdminStates.waiting_for_promo_code
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_promo_duration_selection(c, state, locale),
+        lambda c: c.data.startswith("promo_duration:"),
+        state=AdminStates.waiting_for_promo_duration
+    )
+    dp.register_message_handler(
+        lambda message, state: process_custom_duration_input(message, state, locale),
+        state=AdminStates.waiting_for_promo_duration
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_promo_uses_selection(c, state, locale),
+        lambda c: c.data.startswith("promo_uses:"),
+        state=AdminStates.waiting_for_promo_uses
+    )
+    dp.register_message_handler(
+        lambda message, state: process_custom_uses_input(message, state, locale),
+        state=AdminStates.waiting_for_promo_uses
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_promo_expiry_selection(c, state, locale),
+        lambda c: c.data.startswith("promo_expiry:"),
+        state=AdminStates.waiting_for_promo_expiry
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_delete_promo(c, state, locale),
+        lambda c: c.data.startswith("delete_promo:")
+    )
+    dp.register_callback_query_handler(
+        lambda c, state: process_deactivate_promo(c, state, locale),
+        lambda c: c.data.startswith("deactivate_promo:")
     ) 

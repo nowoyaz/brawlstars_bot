@@ -87,8 +87,8 @@ class Sponsor(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     link = Column(String, nullable=False)
-    reward = Column(Integer, nullable=False, default=0)  # Награда в монетах, оставляем для совместимости
     channel_id = Column(String, nullable=True)  # ID канала для проверки подписки
+    reward = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -107,4 +107,22 @@ class UserSponsorSubscription(Base):
     # Связи с другими таблицами
     user = relationship("User", back_populates="sponsor_subscriptions", foreign_keys=[user_tg_id])
     sponsor = relationship("Sponsor", back_populates="user_subscriptions")
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, nullable=False, index=True)
+    duration_days = Column(Integer, nullable=False)  # Срок действия премиума в днях
+    max_uses = Column(Integer, default=1)  # Максимальное количество использований (1 = одноразовый)
+    uses_count = Column(Integer, default=0)  # Текущее количество использований
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # Дата истечения самого промокода (опционально)
+
+class PromoUse(Base):
+    __tablename__ = "promo_uses"
+    id = Column(Integer, primary_key=True, index=True)
+    promo_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    used_at = Column(DateTime, default=datetime.datetime.utcnow)
 

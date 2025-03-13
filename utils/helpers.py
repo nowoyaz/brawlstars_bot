@@ -494,3 +494,50 @@ def can_create_announcement(user_id: int, announcement_type: str) -> bool:
     
     # Пользователи без премиума могут иметь только одно объявление любого типа
     return len(team_announcements) + len(club_announcements) == 0
+
+def use_promo_code(code: str, user_id: int) -> dict:
+    """
+    Функция-обертка для использования промокода.
+    Вызывает функцию из модуля database.crud
+    
+    Args:
+        code (str): Код промокода
+        user_id (int): ID пользователя
+    
+    Returns:
+        dict: Результат активации промокода содержащий:
+            - success (bool): Успешность активации
+            - error_code (str, optional): Код ошибки в случае неудачи
+            - duration_days (int, optional): Срок действия премиума в днях
+            - end_date (datetime, optional): Дата окончания премиума
+    """
+    from database.crud import use_promo_code as db_use_promo_code
+    import datetime
+    
+    # Получаем кортежный результат из базовой функции
+    success, message, duration_days = db_use_promo_code(user_id, code)
+    
+    # Формируем словарь с результатом
+    result = {'success': success}
+    
+    if success:
+        # Если успешно, добавляем информацию о сроке действия
+        result['duration_days'] = duration_days
+        # Вычисляем дату окончания премиума
+        result['end_date'] = datetime.datetime.now() + datetime.timedelta(days=duration_days)
+    else:
+        # Если неуспешно, добавляем код ошибки на основе сообщения
+        if 'не найден' in message:
+            result['error_code'] = 'not_found'
+        elif 'уже использовали' in message:
+            result['error_code'] = 'used'
+        elif 'неактивен' in message:
+            result['error_code'] = 'inactive'
+        elif 'истек' in message:
+            result['error_code'] = 'expired'
+        elif 'максимальное число раз' in message:
+            result['error_code'] = 'limit_reached'
+        else:
+            result['error_code'] = 'unknown'
+    
+    return result

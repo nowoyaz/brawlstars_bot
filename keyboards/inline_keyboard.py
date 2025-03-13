@@ -297,9 +297,21 @@ def rules_keyboard(locale, announcement_type: str):
 
 def premium_keyboard(locale, is_premium=False):
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton(text=locale["button_price"], callback_data="premium_prices"))
-    kb.add(InlineKeyboardButton(text=locale["button_contact_manager"], url=MANAGER_LINK))
-    kb.add(InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main"))
+    
+    # Кнопка покупки премиума удалена по запросу пользователя
+    
+    # Добавляем кнопку информации о ценах 
+    kb.add(InlineKeyboardButton(text=locale.get("premium_prices_info_button", "💰 Информация о ценах"), callback_data="premium_prices_info"))
+    
+    # Добавляем кнопку активации промокода
+    kb.add(InlineKeyboardButton(text=locale.get("activate_promo_button", "🎟️ Активировать промокод"), callback_data="activate_promo"))
+    
+    # Добавляем кнопку связи с менеджером
+    kb.add(InlineKeyboardButton(text=locale.get("contact_manager_button", "👨‍💼 Связаться с менеджером"), url=MANAGER_LINK))
+    
+    # Добавляем кнопку возврата в меню
+    kb.add(InlineKeyboardButton(text=locale.get("button_back", "🔙 Назад в меню"), callback_data="back_to_main"))
+    
     return kb
 
 def premium_prices_keyboard(locale):
@@ -318,10 +330,16 @@ def admin_premium_keyboard(locale):
     return kb
 
 def admin_panel_keyboard(locale):
+    """Клавиатура для админ-панели"""
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton(text=locale["admin_give_premium"], callback_data="give_premium"))
-    kb.add(InlineKeyboardButton(text=locale["admin_manage_prices"], callback_data="manage_prices"))
-    kb.add(InlineKeyboardButton(text=locale["admin_manage_sponsors"], callback_data="manage_sponsors"))
+    
+    kb.add(
+        InlineKeyboardButton(text=locale.get("give_premium_button", "💎 Выдать премиум"), callback_data="give_premium"),
+        InlineKeyboardButton(text=locale.get("premium_prices_button", "💵 Настройка цен"), callback_data="premium_prices"),
+        InlineKeyboardButton(text=locale.get("manage_sponsors_button", "🔗 Управление спонсорами"), callback_data="manage_sponsors"),
+        InlineKeyboardButton(text=locale.get("manage_promo_codes_button", "🎟️ Управление промокодами"), callback_data="manage_promo_codes")
+    )
+    
     return kb
 
 def admin_premium_duration_keyboard(locale):
