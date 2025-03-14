@@ -4,7 +4,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from utils.helpers import is_user_premium
 from database.crud import get_premium_prices, get_user, update_user_premium, use_promo_code
 from config import ADMIN_ID, MANAGER_LINK
-from utils.helpers import get_user_language
+from utils.helpers import get_user_language, record_section_visit, check_premium_achievement
 from keyboards.inline_keyboard import premium_keyboard, premium_prices_keyboard
 from database.session import SessionLocal
 import datetime
@@ -79,6 +79,9 @@ async def process_premium_menu(callback: types.CallbackQuery, locale):
     """Обработчик для меню премиум"""
     user_locale = get_user_language(callback.from_user.id)
     user = get_user(callback.from_user.id)
+    
+    # Записываем посещение раздела
+    record_section_visit(callback.from_user.id, "premium")
     
     # Проверяем, есть ли у пользователя премиум-статус
     is_premium = user and user.premium_end_date and user.premium_end_date > datetime.datetime.now()

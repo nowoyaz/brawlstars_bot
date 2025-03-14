@@ -278,18 +278,18 @@ def process_referral(referred_id: int, inviter_id: int):
     # Проверяем, не был ли уже зафиксирован реферал
     existing = session.query(Referral).filter(Referral.referred_id == referred_id).first()
     if not existing and referred_id != inviter_id:
-        referral = Referral(inviter_id=inviter_id, referred_id=referred_id)
+        referral = Referral(referrer_id=inviter_id, referred_id=referred_id)
         session.add(referral)
-        # Начисляем пригласившему 20 кристаллов
-        user = session.query(User).filter(User.id == inviter_id).first()
+        # Начисляем пригласившему 20 монет
+        user = session.query(User).filter(User.tg_id == inviter_id).first()
         if user:
-            user.crystals += 20
+            user.coins += 20
         session.commit()
     session.close()
 
 
 def get_referral_count(user_id: int) -> int:
     session = SessionLocal()
-    count = session.query(Referral).filter(Referral.inviter_id == user_id).count()
+    count = session.query(Referral).filter(Referral.referrer_id == user_id).count()
     session.close()
     return count

@@ -2,12 +2,16 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher
 from keyboards.inline_keyboard import additional_keyboard, inline_main_menu_keyboard
 from utils.helpers import get_user_announcements_count, get_referral_count, is_user_premium, can_receive_daily_crystals, give_daily_crystals
-from utils.helpers import get_user_language
+from utils.helpers import get_user_language, record_section_visit
 
 # Обработчик для раздела "Дополнительно"
 async def cmd_additional(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
+    
+    # Записываем посещение раздела
+    record_section_visit(callback.from_user.id, "additional")
+    
     text = locale["additional_text"]
     kb = additional_keyboard(locale)
     await callback.message.edit_text(text, reply_markup=kb)
@@ -61,7 +65,7 @@ async def process_referral_program(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
     # Формируем реферальную ссылку (замените YourBotUsername на имя вашего бота)
-    referral_link = f"https://t.me/obrientest_bot?start={callback.from_user.id}"
+    referral_link = f"https://t.me/Bubser_PoiskBot?start={callback.from_user.id}"
     count = get_referral_count(callback.from_user.id)
     text = locale["referral_text"].format(referral_link=referral_link, count=count)
     await callback.message.edit_text(text, reply_markup=inline_main_menu_keyboard(locale))

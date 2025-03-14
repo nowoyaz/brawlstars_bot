@@ -1,14 +1,27 @@
 from aiogram import types
 from aiogram.dispatcher import Dispatcher
-from utils.helpers import get_user_crystals, get_user_language
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from utils.helpers import get_user_crystals, get_user_language, process_crystal_transfer, record_section_visit, check_coins_achievement
 from keyboards.inline_keyboard import inline_main_menu_keyboard
+from database.crud import get_user_coins
 
 async def cmd_crystals(callback: types.CallbackQuery, locale):
+    """Обработчик для кнопки 'Монеты' - показывает баланс и позволяет отправить монеты"""
     locale = get_user_language(callback.from_user.id)
+    
+    # Записываем посещение раздела
+    record_section_visit(callback.from_user.id, "crystals")
+    
+    # Проверяем достижение "Липрикон"
+    check_coins_achievement(callback.from_user.id)
+    
+    # Получаем данные о пользователе
+    from database.session import SessionLocal
+    from database.models import User
     await callback.answer()
-    crystals = get_user_crystals(callback.from_user.id)
+    coins = get_user_coins(callback.from_user.id)
     user_id = callback.from_user.id
-    text = locale["crystals_text"].format(crystals=crystals, user_id=user_id)
+    text = locale["crystals_text"].format(crystals=coins, user_id=user_id)
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")

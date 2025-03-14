@@ -109,24 +109,31 @@ async def check_and_award_achievements(user_id: int) -> List[Dict]:
 
 def format_achievements_message(achievements: List[str], locale: dict) -> str:
     """Форматирует сообщение со списком всех достижений с указанием полученных и неполученных"""
-    message = locale.get("achievements_title", "🏆 Достижения:\n\n")
-    message += locale.get("achievements_obtained", "✅ Полученные достижения:\n")
+    total_achievements = len(ACHIEVEMENTS)
+    completed_count = len(achievements) if achievements else 0
+    
+    message = locale.get("achievements_text", "🏆 Ваши достижения: {count}/{total}").format(
+        count=completed_count,
+        total=total_achievements
+    ) + "\n\n"
     
     # Сначала выводим полученные достижения
-    has_obtained = False
-    for ach_id in achievements:
-        if ach_id in ACHIEVEMENTS:
-            has_obtained = True
-            achievement = ACHIEVEMENTS[ach_id]
-            message += f"{achievement['emoji']} {achievement['name']} - {achievement['description']}\n"
-    
-    if not has_obtained:
-        message += locale.get("no_achievements", "У вас пока нет достижений\n")
+    if achievements:
+        message += locale.get("achievements_list", "📋 Список ваших достижений:") + "\n\n"
+        for ach_id in achievements:
+            if ach_id in ACHIEVEMENTS:
+                achievement = ACHIEVEMENTS[ach_id]
+                message += f"{achievement['emoji']} {achievement['name']} - {achievement['description']}\n"
+                message += locale.get("achievement_completed", "✅ Выполнено") + "\n\n"
+    else:
+        message += locale.get("no_achievements", "🏅 У вас пока нет достижений. Попробуйте выполнить некоторые действия, чтобы их получить!") + "\n\n"
     
     # Затем выводим недостающие достижения
-    message += "\n" + locale.get("achievements_missing", "🔒 Доступные достижения:\n")
-    for ach_id, achievement in ACHIEVEMENTS.items():
-        if ach_id not in achievements:
+    missing_achievements = [ach for ach_id, ach in ACHIEVEMENTS.items() if ach_id not in achievements]
+    if missing_achievements:
+        message += locale.get("achievements_available", "📋 Доступные достижения:") + "\n\n"
+        for achievement in missing_achievements:
             message += f"{achievement['emoji']} {achievement['name']} - {achievement['description']}\n"
+            message += locale.get("achievement_not_completed", "❌ Не выполнено") + "\n\n"
     
     return message 

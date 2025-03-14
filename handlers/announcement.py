@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import save_announcement, get_user_language, is_user_premium, can_create_announcement
+from utils.helpers import save_announcement, get_user_language, is_user_premium, can_create_announcement, check_announcement_achievements
 from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard, rules_keyboard
 from states.announcement import AnnouncementState
 
@@ -177,6 +177,10 @@ async def action_publish(callback: types.CallbackQuery, locale, state: FSMContex
         keyword=keyword,
         media_type=media_type
     )
+    
+    # Выдаем достижение в зависимости от типа объявления
+    check_announcement_achievements(callback.from_user.id, announcement_type)
+    
     await callback.message.edit_text(locale["ann_created_success"], reply_markup=inline_main_menu_keyboard(locale))
     await state.finish()
 

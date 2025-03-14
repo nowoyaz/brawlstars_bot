@@ -6,6 +6,32 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def update_user_last_gift(user_id: int) -> bool:
+    """
+    Обновляет время последнего подарка пользователя на текущее время
+    
+    Args:
+        user_id (int): ID пользователя
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            return False
+            
+        user.last_gift = datetime.datetime.now()
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении времени последнего подарка: {str(e)}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
 def update_user_premium(user_id: int, end_date: datetime.datetime):
     """Обновляет премиум статус пользователя.
     
@@ -230,6 +256,17 @@ def add_coins_to_user(user_id: int, coins: int):
         user.coins += coins
         session.commit()
         return True
+    finally:
+        session.close()
+
+def get_user_coins(user_id: int) -> int:
+    """Получает текущий баланс монет пользователя"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            return 0
+        return user.coins
     finally:
         session.close()
 
@@ -470,3 +507,107 @@ def use_promo_code(user_id: int, code: str):
         session.close()
 
 # ----- Конец функций для работы с промокодами ----- 
+
+def create_new_user(tg_id: int, username: str = None, first_name: str = None, referrer_id: int = None):
+    """
+    Создает нового пользователя в базе данных
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+        username (str): Имя пользователя в Telegram (опционально)
+        first_name (str): Имя пользователя (опционально)
+        referrer_id (int): ID пользователя, который пригласил нового пользователя (опционально)
+    
+    Returns:
+        User: Созданный пользователь
+    """
+    session = SessionLocal()
+    try:
+        # Проверяем, существует ли пользователь
+        user = session.query(User).filter(User.tg_id == tg_id).first()
+        if user:
+            return user
+            
+        # Создаем нового пользователя
+        user = User(
+            tg_id=tg_id,
+            username=username,
+            first_name=first_name,
+            crystals=100,  # Начальное количество кристаллов
+            created_at=datetime.datetime.now()
+        )
+        session.add(user)
+        session.commit()
+        
+        # Если указан ID реферера, обрабатываем реферальную систему
+        if referrer_id:
+            from utils.helpers import process_referral
+            process_referral(tg_id, referrer_id)
+            
+        return user
+    except Exception as e:
+        session.rollback()
+        print(f"Error creating new user: {e}")
+        return None
+    finally:
+        session.close()
+
+def get_user_by_tg_id(tg_id: int):
+    """
+    Получает пользователя по его Telegram ID
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+    
+    Returns:
+        User: Пользователь или None, если не найден
+    """
+    session = SessionLocal()
+    try:
+        return session.query(User).filter(User.tg_id == tg_id).first()
+    finally:
+        session.close()
+
+def is_user_banned(tg_id: int) -> bool:
+    """
+    Проверяет, заблокирован ли пользователь
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+    
+    Returns:
+        bool: True, если пользователь заблокирован, False в противном случае
+    """
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == tg_id).first()
+        return user.blocked if user else False
+    finally:
+        session.close()
+
+def add_user_crystals(tg_id: int, amount: int) -> bool:
+    """
+    Добавляет кристаллы пользователю
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+        amount (int): Количество кристаллов для добавления
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == tg_id).first()
+        if not user:
+            return False
+            
+        user.crystals += amount
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Error adding crystals to user: {e}")
+        return False
+    finally:
+        session.close() 

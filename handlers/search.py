@@ -1,8 +1,9 @@
 from aiogram import types
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from database.session import SessionLocal
-from database.models import Announcement
+from database.models import Announcement, User
 from utils.helpers import (
     get_next_announcement,
     get_user_announcement,
@@ -14,7 +15,9 @@ from utils.helpers import (
     get_announcements_list,
     get_announcement_by_id,
     is_user_premium,
-    get_paginated_announcements
+    get_paginated_announcements,
+    get_user_language,
+    record_section_visit
 )
 
 from keyboards.inline_keyboard import (
@@ -38,17 +41,47 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def display_announcement_with_keyword(announcement, locale):
+    """
+    Функция для форматирования отображения объявления с ключевым словом
+    """
+    if not announcement:
+        return None
+    
+    # Добавляем метку Premium, если пользователь премиум
+    premium_label = locale["premium_label"] + "\n" if announcement.get("is_premium") else ""
+    
+    # Добавляем метку ключевого слова
+    keyword_label = ""
+    if announcement.get("keyword"):
+        keyword_text = locale.get(f"keyword_{announcement['keyword']}", announcement['keyword'])
+        keyword_label = locale["keyword_label"].format(keyword=keyword_text) + "\n"
+    
+    # Добавляем время создания
+    time_label = locale["time_label"] + " " + announcement["created_at"] + "\n"
+    
+    # Формируем полный текст
+    return f"{premium_label}{keyword_label}{time_label}{announcement['description']}"
+
 # ----- Меню поиска -----
 
 async def process_search_team_menu(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
+    
+    # Записываем посещение раздела
+    record_section_visit(callback.from_user.id, "search_team_menu")
+    
     text = locale["search_team_menu_text"]
     await callback.message.edit_text(text, reply_markup=search_team_menu_keyboard(locale))
 
 async def process_search_club_menu(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
+    
+    # Записываем посещение раздела
+    record_section_visit(callback.from_user.id, "search_club_menu")
+    
     text = locale["search_club_menu_text"]
     await callback.message.edit_text(text, reply_markup=search_club_menu_keyboard(locale))
 
@@ -634,182 +667,6 @@ async def process_unfavorite(callback: types.CallbackQuery, locale):
 
 # ----- Репорт -----
 
-async def process_report_selection(callback: types.CallbackQuery, locale):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    data = callback.data.split(":")
-    if len(data) >= 4:
-        announcement_id, reason, announcement_type = int(data[1]), data[2], data[3]
-        confirm_text = "🤔 Вы уверены, что хотите пожаловаться на этого пользователя? При ложных репортах вы можете быть наказаны. ⚖️"
-        # Если сообщение содержит фотографию, удаляем его и отправляем новое текстовое сообщение
-        try:
-            if callback.message.photo:
-                await callback.message.delete()
-                await callback.message.bot.send_message(
-                    callback.from_user.id,
-                    confirm_text,
-                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
-                )
-            else:
-                await callback.message.edit_text(
-                    confirm_text,
-                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
-                )
-        except Exception:
-            # На случай ошибок отправляем новое сообщение
-            await callback.message.bot.send_message(
-                callback.from_user.id,
-                confirm_text,
-                reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
-            )
-
-async def process_back_report(callback: types.CallbackQuery, locale):
-    """
-    Обработчик для кнопки "Назад" из меню репорта,
-    возвращает пользователя к просмотру объявления
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    data = callback.data.split(":")
-    if len(data) >= 3:
-        announcement_id = int(data[1])
-        announcement_type = data[2]
-        from utils.helpers import get_announcement_by_id
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            count = get_announcements_count(announcement_type, callback.from_user.id)
-            has_next = count > 1
-            has_prev = False  # При возврате из меню репорта показываем первое объявление
-            text = display_announcement_with_keyword(announcement, locale)
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-                
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.bot.send_photo(
-                    callback.from_user.id,
-                    photo=announcement["image_id"],
-                    caption=text,
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.bot.send_video(
-                    callback.from_user.id,
-                    video=announcement["image_id"],
-                    caption=text,
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.bot.send_animation(
-                    callback.from_user.id,
-                    animation=announcement["image_id"],
-                    caption=text,
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-        else:
-            await callback.message.edit_text("Объявление не найдено", reply_markup=inline_main_menu_keyboard(locale))
-
-async def confirm_report(callback: types.CallbackQuery, locale):
-    """
-    Обработчик подтверждения репорта
-    """
-    locale = get_user_language(callback.from_user.id)
-    data = callback.data.split(":")
-    if len(data) >= 5:
-        announcement_id = int(data[1])
-        reason = data[2]
-        announcement_type = data[3]
-        confirmed = data[4]
-        
-        if confirmed == "yes":
-            # Записываем репорт в базу данных
-            report_announcement(callback.from_user.id, announcement_id, reason)
-            await callback.answer(locale["button_report"] + " ✅")
-            
-            # Здесь можно добавить логику отправки уведомления администратору
-            
-            # Показываем следующее объявление
-            if announcement_type == "team":
-                announcement = get_next_announcement("team", callback.from_user.id)
-                if announcement:
-                    count = get_announcements_count("team", callback.from_user.id)
-                    has_next = count > 1
-                    has_prev = False  # Для упрощения, после репорта всегда показываем первое объявление
-                    text = display_announcement_with_keyword(announcement, locale)
-                    
-                    # Определяем тип медиа и отправляем соответствующим методом
-                    media_type = announcement.get("media_type", "photo")
-                    if media_type == "photo":
-                        await callback.message.edit_media(
-                            types.InputMediaPhoto(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                    elif media_type == "video":
-                        await callback.message.edit_media(
-                            types.InputMediaVideo(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                    else:  # animation (GIF)
-                        await callback.message.edit_media(
-                            types.InputMediaAnimation(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                else:
-                    await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-            elif announcement_type == "club":
-                announcement = get_next_announcement("club", callback.from_user.id)
-                if announcement:
-                    count = get_announcements_count("club", callback.from_user.id)
-                    has_next = count > 1
-                    has_prev = False  # Для упрощения, после репорта всегда показываем первое объявление
-                    text = display_announcement_with_keyword(announcement, locale)
-                    
-                    # Определяем тип медиа и отправляем соответствующим методом
-                    media_type = announcement.get("media_type", "photo")
-                    if media_type == "photo":
-                        await callback.message.edit_media(
-                            types.InputMediaPhoto(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                    elif media_type == "video":
-                        await callback.message.edit_media(
-                            types.InputMediaVideo(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                    else:  # animation (GIF)
-                        await callback.message.edit_media(
-                            types.InputMediaAnimation(
-                                media=announcement["image_id"],
-                                caption=text
-                            ),
-                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                        )
-                else:
-                    await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-        else:
-            await callback.answer("Репорт отменен")
-    else:
-        # Неверный формат данных
-        await callback.answer("Ошибка в формате данных")
-
 async def process_report(callback: types.CallbackQuery, locale, announcement_type: str):
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
@@ -902,148 +759,288 @@ async def process_report_reason(callback: types.CallbackQuery, locale):
                     reply_markup=inline_main_menu_keyboard(locale)
                 )
 
-# ----- Фильтрация -----
-
-async def process_filtered_search(callback: types.CallbackQuery, locale, announcement_type: str, order: str = "new", state: FSMContext = None):
-    """
-    Обработчик для поиска объявлений с фильтрацией
-    """
+async def process_report_selection(callback: types.CallbackQuery, locale):
     locale = get_user_language(callback.from_user.id)
-    announcement_ids = get_filtered_announcement(announcement_type, callback.from_user.id, order)
-    
-    if not announcement_ids:
-        kb = search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
-        await callback.message.edit_text(locale["no_announcements"], reply_markup=kb)
-        return
-    
-    # Берем первое объявление
-    announcement_id = announcement_ids[0]
-    # Получаем полные данные объявления по ID
-    announcement = get_announcement_by_id(announcement_id)
-    
-    if not announcement:
-        kb = search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
-        await callback.message.edit_text(locale["no_announcements"], reply_markup=kb)
-        return
-        
-    text = display_announcement_with_keyword(announcement, locale)
-    
-    # Проверяем, есть ли еще объявления
-    has_next = len(announcement_ids) > 1
-    has_prev = False  # На первой странице нет кнопки "назад"
-    
-    # Сохраняем данные в состоянии (если передан state)
-    if state:
-        await state.update_data(
-            announcement_ids=announcement_ids,
-            current_index=0,
-            filter_order=order,
-            announcement_type=announcement_type
-        )
-    
-    # Отправляем сообщение с объявлением
-    await callback.message.delete()
-    
-    # Определяем тип медиа и отправляем соответствующим методом
-    media_type = announcement.get("media_type", "photo")
-    if media_type == "photo":
-        await callback.message.bot.send_photo(
-            chat_id=callback.from_user.id,
-            photo=announcement["image_id"],
-            caption=text,
-            reply_markup=announcement_keyboard(
-                locale,
-                announcement["id"],
-                announcement["user_id"],
-                has_next,
-                has_prev,
-                announcement_type
+    await callback.answer()
+    data = callback.data.split(":")
+    if len(data) >= 4:
+        announcement_id, reason, announcement_type = int(data[1]), data[2], data[3]
+        confirm_text = "🤔 Вы уверены, что хотите пожаловаться на этого пользователя? При ложных репортах вы можете быть наказаны. ⚖️"
+        # Если сообщение содержит фотографию, удаляем его и отправляем новое текстовое сообщение
+        try:
+            if callback.message.photo:
+                await callback.message.delete()
+                await callback.message.bot.send_message(
+                    callback.from_user.id,
+                    confirm_text,
+                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
+                )
+            else:
+                await callback.message.edit_text(
+                    confirm_text,
+                    reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
+                )
+        except Exception:
+            # На случай ошибок отправляем новое сообщение
+            await callback.message.bot.send_message(
+                callback.from_user.id,
+                confirm_text,
+                reply_markup=report_confirmation_keyboard(locale, announcement_id, announcement_type, reason)
             )
-        )
-    elif media_type == "video":
-        await callback.message.bot.send_video(
-            chat_id=callback.from_user.id,
-            video=announcement["image_id"],
-            caption=text,
-            reply_markup=announcement_keyboard(
-                locale,
-                announcement["id"],
-                announcement["user_id"],
-                has_next,
-                has_prev,
-                announcement_type
-            )
-        )
-    else:  # animation (GIF)
-        await callback.message.bot.send_animation(
-            chat_id=callback.from_user.id,
-            animation=announcement["image_id"],
-            caption=text,
-            reply_markup=announcement_keyboard(
-                locale,
-                announcement["id"],
-                announcement["user_id"],
-                has_next,
-                has_prev,
-                announcement_type
-            )
-        )
 
-async def show_filters_team(callback: types.CallbackQuery, locale, state: FSMContext):
+async def process_back_report(callback: types.CallbackQuery, locale):
     """
-    Показывает меню фильтров для поиска команды
+    Обработчик для кнопки "Назад" из меню репорта,
+    возвращает пользователя к просмотру объявления
     """
     locale = get_user_language(callback.from_user.id)
     await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    filter_order = data.get("filter_order", "new")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
+    data = callback.data.split(":")
+    if len(data) >= 3:
+        announcement_id = int(data[1])
+        announcement_type = data[2]
+        from utils.helpers import get_announcement_by_id
         announcement = get_announcement_by_id(announcement_id)
         if announcement:
+            count = get_announcements_count(announcement_type, callback.from_user.id)
+            has_next = count > 1
+            has_prev = False  # При возврате из меню репорта показываем первое объявление
             text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+                
             # Определяем тип медиа и отправляем соответствующим методом
             media_type = announcement.get("media_type", "photo")
             if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
+                await callback.message.bot.send_photo(
+                    callback.from_user.id,
+                    photo=announcement["image_id"],
+                    caption=text,
+                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
                 )
             elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
+                await callback.message.bot.send_video(
+                    callback.from_user.id,
+                    video=announcement["image_id"],
+                    caption=text,
+                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
                 )
             else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
+                await callback.message.bot.send_animation(
+                    callback.from_user.id,
+                    animation=announcement["image_id"],
+                    caption=text,
+                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
                 )
+
+async def confirm_report(callback: types.CallbackQuery, locale):
+    """
+    Обработчик подтверждения репорта
+    """
+    locale = get_user_language(callback.from_user.id)
+    data = callback.data.split(":")
+    if len(data) >= 5:
+        announcement_id = int(data[1])
+        reason = data[2]
+        announcement_type = data[3]
+        confirmed = data[4]
+        
+        if confirmed == "yes":
+            # Записываем репорт в базу данных
+            report_announcement(callback.from_user.id, announcement_id, reason)
+            await callback.answer(locale["button_report"] + " ✅")
+            
+            # Здесь можно добавить логику отправки уведомления администратору
+            
+            # Показываем следующее объявление
+            if announcement_type == "team":
+                announcement = get_next_announcement("team", callback.from_user.id)
+                if announcement:
+                    count = get_announcements_count("team", callback.from_user.id)
+                    has_next = count > 1
+                    has_prev = False  # Для упрощения, после репорта всегда показываем первое объявление
+                    text = display_announcement_with_keyword(announcement, locale)
+                    
+                    # Определяем тип медиа и отправляем соответствующим методом
+                    media_type = announcement.get("media_type", "photo")
+                    if media_type == "photo":
+                        await callback.message.edit_media(
+                            types.InputMediaPhoto(
+                                media=announcement["image_id"],
+                                caption=text
+                            ),
+                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+                        )
+                    elif media_type == "video":
+                        await callback.message.edit_media(
+                            types.InputMediaVideo(
+                                media=announcement["image_id"],
+                                caption=text
+                            ),
+                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+                        )
+                    else:  # animation (GIF)
+                        await callback.message.edit_media(
+                            types.InputMediaAnimation(
+                                media=announcement["image_id"],
+                                caption=text
+                            ),
+                            reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
+                        )
+
+# ----- Фильтрация -----
+
+async def process_filtered_search(callback: types.CallbackQuery, locale):
+    """Обработчик для фильтрованного поиска по времени/премиум-статусу"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем тип фильтра из callback_data
+    filter_parts = callback.data.split("_")
+    if len(filter_parts) < 4:
+        await callback.message.edit_text("Ошибка в выборе фильтра", reply_markup=search_options_keyboard(locale))
+        return
+    
+    announcement_type = filter_parts[2]  # team или club
+    filter_type = filter_parts[3]  # new, old или premium
+    
+    # Логика фильтрации объявлений
+    session = SessionLocal()
+    query = session.query(Announcement).filter(Announcement.announcement_type == announcement_type)
+    
+    # Применяем фильтр
+    if filter_type == "new":
+        query = query.order_by(Announcement.created_at.desc())
+    elif filter_type == "old":
+        query = query.order_by(Announcement.created_at)
+    elif filter_type == "premium":
+        # Получаем ID пользователей с премиум-статусом
+        premium_users = session.query(User.id).filter(User.is_premium == True).all()
+        premium_user_ids = [user.id for user in premium_users]
+        
+        # Фильтруем объявления по премиум-пользователям
+        if premium_user_ids:
+            query = query.filter(Announcement.user_id.in_(premium_user_ids))
+            query = query.order_by(Announcement.created_at.desc())
+        else:
+            # Если нет премиум-пользователей, показываем сообщение
+            session.close()
+            await callback.message.edit_text(
+                locale.get("no_premium_announcements", "🔍 Премиум-объявления не найдены"),
+                reply_markup=search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
+            )
             return
     
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
+    # Получаем первое объявление
+    announcement = query.first()
+    session.close()
+    
+    if not announcement:
+        # Если объявления не найдены, показываем сообщение
+        await callback.message.edit_text(
+            locale.get("no_announcements", "📝 Объявления не найдены"),
+            reply_markup=search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
+        )
+        return
+    
+    # Показываем найденное объявление
+    await show_announcement(callback, announcement, locale, announcement_type)
+
+async def show_filters_team(callback: types.CallbackQuery, locale, state: FSMContext):
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем текущее объявление (если оно есть)
+    data = await state.get_data()
+    user_announcement = data.get('user_announcement', None)
+    
+    if user_announcement:
+        # Если у пользователя уже есть объявление, проверяем его статус
+        session = SessionLocal()
+        announcement = session.query(Announcement).filter(
+            Announcement.id == user_announcement,
+            Announcement.user_id == callback.from_user.id
+        ).first()
+        session.close()
+        
+        if announcement:
+            # Если объявление найдено, предлагаем редактировать его
+            # Логика для редактирования объявления...
+            return
+    
+    # Показываем фильтры по времени и премиум-статусу
+    buttons = [
+        types.InlineKeyboardButton(text=locale["filter_new"], callback_data=f"filtered_search_team_new"),
+        types.InlineKeyboardButton(text=locale["filter_old"], callback_data=f"filtered_search_team_old"),
+        types.InlineKeyboardButton(text=locale["filter_premium"], callback_data=f"filtered_search_team_premium")
+    ]
+    
+    # Добавляем кнопку для фильтрации по ключевым словам
+    buttons.append(types.InlineKeyboardButton(text=locale.get("filter_by_keyword", "🏷 По ключевым словам"), callback_data="show_keyword_filters_team"))
+    
+    # Кнопка "Назад"
+    buttons.append(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_menu"))
+    
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    for button in buttons:
+        kb.add(button)
+    
+    await callback.message.edit_text(locale["search_filters"], reply_markup=kb)
+
+async def show_keyword_filters_team(callback: types.CallbackQuery, locale):
+    """Показывает фильтры по ключевым словам для команд"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    kb = keyword_filter_keyboard(locale, "team")
+    
     await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "team", filter_order)
+        locale.get("filter_by_keyword", "🏷 Выберите ключевое слово:"),
+        reply_markup=kb
     )
+
+async def process_keyword_filter(callback: types.CallbackQuery, locale):
+    """Обработчик для фильтрации по ключевым словам"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем параметры из callback_data
+    filter_parts = callback.data.split(":")
+    if len(filter_parts) < 3:
+        await callback.message.edit_text("Ошибка в выборе фильтра", reply_markup=search_options_keyboard(locale))
+        return
+    
+    keyword = filter_parts[1]  # all, trophy_modes, ranked, club_events, map_maker или other
+    announcement_type = filter_parts[2]  # team или club
+    
+    # Если выбрано "all", показываем все объявления
+    if keyword == "all":
+        await normal_search_team(callback, locale) if announcement_type == "team" else normal_search_club(callback, locale)
+        return
+    
+    # Логика фильтрации объявлений по ключевому слову
+    session = SessionLocal()
+    query = session.query(Announcement).filter(
+        Announcement.announcement_type == announcement_type,
+        Announcement.keyword == keyword
+    ).order_by(Announcement.created_at.desc())
+    
+    # Получаем первое объявление
+    announcement = query.first()
+    session.close()
+    
+    if not announcement:
+        # Если объявления не найдены, показываем сообщение
+        await callback.message.edit_text(
+            locale.get("no_announcements_with_keyword", "📝 Объявления с выбранным ключевым словом не найдены"),
+            reply_markup=search_options_keyboard(locale) if announcement_type == "team" else search_options_club_keyboard(locale)
+        )
+        return
+    
+    # Показываем найденное объявление
+    await show_announcement(callback, announcement, locale, announcement_type)
 
 async def show_filters_club(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -1052,9 +1049,9 @@ async def show_filters_club(callback: types.CallbackQuery, locale, state: FSMCon
     text = locale["filter_options_text"]
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton(text="🆕 " + locale["filter_new"], callback_data="filter_new_club"),
-        types.InlineKeyboardButton(text="🔄 " + locale["filter_old"], callback_data="filter_old_club"),
-        types.InlineKeyboardButton(text="⭐ " + locale["filter_premium"], callback_data="filter_premium_club")
+        types.InlineKeyboardButton(text="🆕 " + locale["filter_new"], callback_data="filtered_search_club_new"),
+        types.InlineKeyboardButton(text="🔄 " + locale["filter_old"], callback_data="filtered_search_club_old"),
+        types.InlineKeyboardButton(text="⭐ " + locale["filter_premium"], callback_data="filtered_search_club_premium")
     )
     kb.add(types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_search_options_menu"))
     
@@ -1067,7 +1064,6 @@ async def process_back_to_search_menu(callback: types.CallbackQuery, locale):
     await callback.answer()
     await callback.message.delete()
     await callback.message.bot.send_message(callback.from_user.id, "Главное меню", reply_markup=inline_main_menu_keyboard(locale))
-
 
 async def filter_keyword_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -1166,9 +1162,9 @@ async def display_announcement(message: types.Message, announcement: dict, local
     # Добавляем метку Premium, если пользователь премиум
     premium_label = locale["premium_label"] + "\n" if announcement.get("is_premium") else ""
     
-    # Добавляем метку ключевого слова только для команд
+    # Добавляем метку ключевого слова
     keyword_label = ""
-    if announcement.get("keyword") and announcement.get("announcement_type") == "team":
+    if announcement.get("keyword"):
         keyword_text = locale.get(f"keyword_{announcement['keyword']}", announcement['keyword'])
         keyword_label = locale["keyword_label"].format(keyword=keyword_text) + "\n"
     
@@ -1199,40 +1195,88 @@ async def display_announcement(message: types.Message, announcement: dict, local
             reply_markup=keyboard
         )
 
-async def show_announcement(message: types.Message, announcement_ids: list, current_index: int, locale, keyboard_func):
-    """Показывает объявление по индексу из списка ID"""
-    if not announcement_ids:
-        await message.answer(locale["no_announcements"])
-        return
+async def show_announcement(callback, announcement, locale, announcement_type):
+    """Показывает объявление пользователю"""
     
-    announcement_id = announcement_ids[current_index]
-    announcement = get_announcement_by_id(announcement_id)
-    if not announcement:
-        await message.answer(locale["announcement_not_found"])
-        return
-
-    keyboard = keyboard_func(current_index, len(announcement_ids))
-    await display_announcement(message, announcement, locale, keyboard)
-
-def display_announcement_with_keyword(announcement, locale):
-    # Функция для форматирования отображения объявления с ключевым словом
-    if not announcement:
-        return None
+    # Получаем данные пользователя, создавшего объявление
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == announcement.user_id).first()
+    session.close()
     
-    # Добавляем метку Premium, если пользователь премиум
-    premium_label = locale["premium_label"] + "\n" if announcement.get("is_premium") else ""
+    # Формируем текст объявления
+    text = f"📝 {announcement.description}\n\n"
     
-    # Добавляем метку ключевого слова только для команд
-    keyword_label = ""
-    if announcement.get("keyword") and announcement.get("announcement_type") == "team":
-        keyword_text = locale.get(f"keyword_{announcement['keyword']}", announcement['keyword'])
-        keyword_label = locale["keyword_label"].format(keyword=keyword_text) + "\n"
+    # Добавляем метку премиум-пользователя, если применимо
+    if user and user.is_premium:
+        text += f"{locale.get('premium_label', '🪙 PREMIUM')}\n"
     
-    # Добавляем время создания
-    time_label = locale["time_label"] + " " + announcement["created_at"] + "\n"
+    # Добавляем время публикации
+    created_time = announcement.created_at.strftime("%d.%m.%Y %H:%M")
+    text += f"{locale.get('time_label', '🕒')} {created_time}\n"
     
-    # Формируем полный текст
-    return f"{premium_label}{keyword_label}{time_label}{announcement['description']}"
+    # Добавляем ключевое слово, если оно есть
+    if announcement.keyword and announcement.keyword != "skip":
+        keyword_text = locale.get(f"keyword_{announcement.keyword}", announcement.keyword.capitalize())
+        text += f"{locale.get('keyword_label', '🏷 Ключевое слово')}: {keyword_text}\n"
+    
+    # Проверяем, есть ли другие объявления этого типа
+    session = SessionLocal()
+    announcements_count = session.query(Announcement).filter(
+        Announcement.announcement_type == announcement_type
+    ).count()
+    session.close()
+    
+    has_next = announcements_count > 1
+    has_prev = False  # Для первого объявления нет предыдущих
+    
+    # Отправляем сообщение с объявлением
+    await callback.message.delete()
+    
+    # Определяем тип медиа и отправляем соответствующим методом
+    media_type = announcement.media_type if hasattr(announcement, 'media_type') else "photo"
+    
+    if media_type == "photo":
+        await callback.message.bot.send_photo(
+            chat_id=callback.from_user.id,
+            photo=announcement.image_id,
+            caption=text,
+            reply_markup=announcement_keyboard(
+                locale,
+                announcement.id,
+                announcement.user_id,
+                has_next,
+                has_prev,
+                announcement_type
+            )
+        )
+    elif media_type == "video":
+        await callback.message.bot.send_video(
+            chat_id=callback.from_user.id,
+            video=announcement.image_id,
+            caption=text,
+            reply_markup=announcement_keyboard(
+                locale,
+                announcement.id,
+                announcement.user_id,
+                has_next,
+                has_prev,
+                announcement_type
+            )
+        )
+    else:  # animation (GIF)
+        await callback.message.bot.send_animation(
+            chat_id=callback.from_user.id,
+            animation=announcement.image_id,
+            caption=text,
+            reply_markup=announcement_keyboard(
+                locale,
+                announcement.id,
+                announcement.user_id,
+                has_next,
+                has_prev,
+                announcement_type
+            )
+        )
 
 async def my_announcement_team(callback: types.CallbackQuery, locale, state: FSMContext):
     locale = get_user_language(callback.from_user.id)
@@ -1355,1290 +1399,276 @@ async def show_report_menu(callback: types.CallbackQuery, locale):
         # Вызываем основную функцию обработки репорта
         await process_report(callback, locale, announcement_type)
 
+# ----- Админские функции -----
+
+async def admin_block_user(callback: types.CallbackQuery):
+    """
+    Обработчик для блокировки пользователя администратором.
+    Вызывается когда администратор нажимает на кнопку блокировки после получения репорта.
+    """
+    await callback.answer("Пользователь заблокирован ✅")
+    
+    # Получаем ID пользователя из callback.data
+    data = callback.data.split(":")
+    if len(data) >= 2:
+        user_id = int(data[1])
+        
+        # Блокируем пользователя в базе данных
+        session = SessionLocal()
+        user = session.query(User).filter(User.id == user_id).first()
+        if user:
+            user.is_banned = True
+            session.commit()
+            
+            # Отправляем уведомление пользователю о блокировке
+            try:
+                await callback.bot.send_message(
+                    user.tg_id,
+                    "⛔ Ваш аккаунт был заблокирован администратором за нарушение правил."
+                )
+            except Exception:
+                pass
+        session.close()
+        
+        # Отвечаем администратору
+        await callback.message.edit_caption(
+            caption=f"Пользователь с ID {user_id} заблокирован."
+        )
+
+async def admin_block_reporter(callback: types.CallbackQuery):
+    """
+    Обработчик для блокировки пользователя, отправившего репорт.
+    Используется в случаях, когда репорт оказался ложным.
+    """
+    await callback.answer("Отправитель репорта заблокирован ✅")
+    
+    # Получаем ID отправителя репорта из callback.data
+    data = callback.data.split(":")
+    if len(data) >= 2:
+        reporter_id = int(data[1])
+        
+        # Блокируем пользователя в базе данных
+        session = SessionLocal()
+        user = session.query(User).filter(User.id == reporter_id).first()
+        if user:
+            user.is_banned = True
+            session.commit()
+            
+            # Отправляем уведомление пользователю о блокировке
+            try:
+                await callback.bot.send_message(
+                    user.tg_id,
+                    "⛔ Ваш аккаунт был заблокирован администратором за ложные жалобы."
+                )
+            except Exception:
+                pass
+        session.close()
+        
+        # Отвечаем администратору
+        await callback.message.edit_caption(
+            caption=f"Отправитель репорта с ID {reporter_id} заблокирован."
+        )
+
+async def admin_ignore_report(callback: types.CallbackQuery):
+    """
+    Обработчик для игнорирования репорта администратором.
+    """
+    await callback.answer("Репорт проигнорирован ✅")
+    
+    # Отвечаем администратору
+    await callback.message.edit_caption(
+        caption="Репорт проигнорирован. Никаких действий не предпринято."
+    )
+
+# Класс для фильтра проверки администратора
+class IsAdmin(object):
+    """
+    Фильтр для проверки, является ли пользователь администратором
+    """
+    def __init__(self, is_admin):
+        self.is_admin = is_admin
+
+    async def __call__(self, obj):
+        if self.is_admin:
+            # Проверяем, является ли пользователь администратором
+            user_id = obj.from_user.id
+            return user_id == ADMIN_ID
+        return True
+
 # ----- Регистрация обработчиков -----
 
 def register_handlers_search(dp: Dispatcher, locale):
-    # Регистрация обработчиков для поиска команды
-    dp.register_callback_query_handler(lambda call: process_search_team_menu(call, locale), lambda c: c.data == "search_team_menu")
-    dp.register_callback_query_handler(lambda call: process_search_team_options(call, locale), lambda c: c.data == "search_team_search")
-    dp.register_callback_query_handler(lambda call, state: process_normal_search_team(call, locale, state), lambda c: c.data == "normal_search_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_next_team(call, locale, state), lambda c: c.data == "next_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_prev_team(call, locale, state), lambda c: c.data == "prev_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_normal_search_team_confirmation(call, locale, state), lambda c: c.data == "confirm_normal_search_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: show_filters_team(call, locale, state), lambda c: c.data == "show_filters_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: filter_keyword_team(call, locale, state), lambda c: c.data == "filter_keyword_team", state="*")
-
-    # Регистрация обработчиков для поиска клуба
-    dp.register_callback_query_handler(lambda call: process_search_club_menu(call, locale), lambda c: c.data == "search_club_menu")
-    dp.register_callback_query_handler(lambda call: process_search_club_options(call, locale), lambda c: c.data == "search_club_search")
-    dp.register_callback_query_handler(lambda call, state: process_normal_search_club(call, locale, state), lambda c: c.data == "normal_search_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_next_club(call, locale, state), lambda c: c.data == "next_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_prev_club(call, locale, state), lambda c: c.data == "prev_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: process_normal_search_club_confirmation(call, locale, state), lambda c: c.data == "confirm_normal_search_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: show_filters_club(call, locale, state), lambda c: c.data == "show_filters_club", state="*")
-
-    # Регистрация обработчиков для my_announcement
-    dp.register_callback_query_handler(lambda call, state: my_announcement_team(call, locale, state), lambda c: c.data == "my_announcement_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: my_announcement_club(call, locale, state), lambda c: c.data == "my_announcement_club", state="*")
-    
-    # Регистрируем обработчик для просмотра конкретного объявления пользователя
+    # Начальные меню поиска
     dp.register_callback_query_handler(
-        lambda c, state: process_view_my_announcement(c, locale, state),
-        lambda c: c.data.startswith("view_my_announcement:"),
-        state="*"
+        lambda call: process_search_team_menu(call, locale),
+        lambda c: c.data == "search_team_menu"
+    )
+    dp.register_callback_query_handler(
+        lambda call: process_search_club_menu(call, locale),
+        lambda c: c.data == "search_club_menu"
     )
     
-    # Регистрируем обработчик для удаления объявления
+    # Обработчики для кнопки "Поиск" в меню поиска команды/клуба
     dp.register_callback_query_handler(
-        lambda c: delete_announcement(c, locale),
-        lambda c: c.data.startswith("delete_announcement:"),
-        state="*"
-    )
-
-    # Общие обработчики
-    dp.register_callback_query_handler(lambda call: process_back_to_search_menu(call, locale), lambda c: c.data == "back_to_search_menu")
-    dp.register_callback_query_handler(lambda call: process_back_to_search_options_menu(call, locale), lambda c: c.data == "back_to_search_options_menu")
-    dp.register_callback_query_handler(lambda call: process_back_to_main(call, locale), lambda c: c.data == "back_to_main")
-    dp.register_callback_query_handler(lambda call, state: filter_by_keyword(call, locale, state), lambda c: c.data.startswith("keyword_filter:"), state="*")
-
-    # Фильтры для команды
-    dp.register_callback_query_handler(lambda call, state: filter_new_team(call, locale, state), lambda c: c.data == "filter_new_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: filter_old_team(call, locale, state), lambda c: c.data == "filter_old_team", state="*")
-    dp.register_callback_query_handler(lambda call, state: filter_premium_team(call, locale, state), lambda c: c.data == "filter_premium_team", state="*")
-
-    # Фильтры для клуба
-    dp.register_callback_query_handler(lambda call, state: filter_new_club(call, locale, state), lambda c: c.data == "filter_new_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: filter_old_club(call, locale, state), lambda c: c.data == "filter_old_club", state="*")
-    dp.register_callback_query_handler(lambda call, state: filter_premium_club(call, locale, state), lambda c: c.data == "filter_premium_club", state="*")
-
-    # ... остальная регистрация обработчиков
-    dp.register_callback_query_handler(
-        lambda call, state: process_favorite(call, locale, "team", state),
-        lambda c: c.data.startswith("favorite:") and ":team" in c.data,
-        state="*"
+        lambda call: process_search_team_options(call, locale),
+        lambda c: c.data == "search_team_search"
     )
     dp.register_callback_query_handler(
-        lambda call, state: process_favorite(call, locale, "club", state),
-        lambda c: c.data.startswith("favorite:") and ":club" in c.data,
-        state="*"
+        lambda call: process_search_club_options(call, locale),
+        lambda c: c.data == "search_club_search"
     )
-    dp.register_callback_query_handler(lambda call: process_unfavorite(call, locale), lambda c: c.data.startswith("unfavorite:"))
-    dp.register_callback_query_handler(lambda call: process_back_report(call, locale), lambda c: c.data.startswith("back_report:"))
-    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
-    dp.register_callback_query_handler(lambda call: process_report_selection(call, locale), lambda c: c.data.startswith("confirm_report_selection:"))
     
-    dp.register_callback_query_handler(lambda call: delete_announcement(call, locale), lambda c: c.data.startswith("delete_announcement:"))
-    dp.register_callback_query_handler(lambda call: get_next_team(call, locale), lambda c: c.data.startswith("next_team"))
-    dp.register_callback_query_handler(lambda call: get_next_club(call, locale), lambda c: c.data.startswith("next_club"))
+    # Обработчики для поиска (обычный/с фильтрами)
     dp.register_callback_query_handler(
-        lambda call, state: filter_new_team(call, locale, state),
-        lambda c: c.data == "filter_new_team",
+        lambda call, state: process_normal_search_team(call, locale, state),
+        lambda c: c.data == "normal_search_team",
         state="*"
     )
     dp.register_callback_query_handler(
-        lambda call, state: filter_old_team(call, locale, state),
-        lambda c: c.data == "filter_old_team",
+        lambda call, state: process_normal_search_club(call, locale, state),
+        lambda c: c.data == "normal_search_club",
+        state="*"
+    )
+    
+    # Обработчики для фильтров
+    dp.register_callback_query_handler(
+        lambda call, state: show_filters_team(call, locale, state),
+        lambda c: c.data == "show_filters_team",
         state="*"
     )
     dp.register_callback_query_handler(
-        lambda call, state: filter_premium_team(call, locale, state),
-        lambda c: c.data == "filter_premium_team",
+        lambda call, state: show_filters_club(call, locale, state),
+        lambda c: c.data == "show_filters_club",
         state="*"
     )
+    
+    # Обработчик для показа фильтров по ключевым словам
     dp.register_callback_query_handler(
-        lambda call, state: filter_new_club(call, locale, state),
-        lambda c: c.data == "filter_new_club",
+        lambda call: show_keyword_filters_team(call, locale),
+        lambda c: c.data == "show_keyword_filters_team",
         state="*"
     )
+    
+    # Обработчики для фильтрованного поиска
     dp.register_callback_query_handler(
-        lambda call, state: filter_old_club(call, locale, state),
-        lambda c: c.data == "filter_old_club",
+        lambda call: process_filtered_search(call, locale),
+        lambda c: c.data.startswith("filtered_search_"),
         state="*"
     )
+    
+    # Обработчики для фильтрации по ключевым словам
     dp.register_callback_query_handler(
-        lambda call, state: filter_premium_club(call, locale, state),
-        lambda c: c.data == "filter_premium_club",
+        lambda call: process_keyword_filter(call, locale),
+        lambda c: c.data.startswith("keyword_filter:"),
         state="*"
     )
-    dp.register_callback_query_handler(lambda call: write_to_owner(call, locale), lambda c: c.data.startswith("write:"))
-    dp.register_callback_query_handler(lambda call: process_report(call, locale, "team"), lambda c: c.data.startswith("report:") and ":team" in c.data)
-    dp.register_callback_query_handler(lambda call: process_report(call, locale, "club"), lambda c: c.data.startswith("report:") and ":club" in c.data)
-    dp.register_callback_query_handler(lambda call: process_report_reason(call, locale), lambda c: c.data.startswith("report_reason:"))
-    dp.register_callback_query_handler(lambda call: confirm_report(call, locale), lambda c: c.data.startswith("confirm_report:"))
-    dp.register_callback_query_handler(lambda call: cancel_report(call, locale), lambda c: c.data.startswith("cancel_report:"))
+    
+    # Обработчики для обработки подтверждений
     dp.register_callback_query_handler(
-        lambda call, state: confirm_normal_search_team(call, locale, state),
+        lambda call, state: process_normal_search_team_confirmation(call, locale, state),
         lambda c: c.data == "confirm_normal_search_team",
         state="*"
     )
     dp.register_callback_query_handler(
-        lambda call, state: confirm_normal_search_club(call, locale, state),
+        lambda call, state: process_normal_search_club_confirmation(call, locale, state),
         lambda c: c.data == "confirm_normal_search_club",
         state="*"
     )
+    
+    # Обработчики для репортов
+    dp.register_callback_query_handler(
+        lambda call: process_report(call, locale, "team"),
+        lambda c: c.data.startswith("report:")
+    )
+    dp.register_callback_query_handler(
+        lambda call: process_report_selection(call, locale),
+        lambda c: c.data.startswith("confirm_report_selection:")
+    )
+    dp.register_callback_query_handler(
+        lambda call: confirm_report(call, locale),
+        lambda c: c.data.startswith("confirm_report:")
+    )
+    dp.register_callback_query_handler(
+        lambda call: process_back_report(call, locale),
+        lambda c: c.data.startswith("cancel_report:")
+    )
+    dp.register_callback_query_handler(
+        lambda call: process_back_report(call, locale),
+        lambda c: c.data.startswith("back_report:")
+    )
+    
+    # Обработчики для админских команд
+    dp.register_callback_query_handler(
+        admin_block_user,
+        lambda c: c.data.startswith("admin_block:"),
+        IsAdmin(True)
+    )
+    dp.register_callback_query_handler(
+        admin_block_reporter,
+        lambda c: c.data.startswith("admin_block_reporter:"),
+        IsAdmin(True)
+    )
+    dp.register_callback_query_handler(
+        admin_ignore_report,
+        lambda c: c.data == "admin_ignore",
+        IsAdmin(True)
+    )
+    
+    # Фильтры и объявления пользователя
+    dp.register_callback_query_handler(
+        lambda call, state: my_announcement_team(call, locale, state),
+        lambda c: c.data == "my_announcement_team",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: my_announcement_club(call, locale, state),
+        lambda c: c.data == "my_announcement_club",
+        state="*"
+    )
+    dp.register_callback_query_handler(
+        lambda call: delete_announcement(call, locale),
+        lambda c: c.data.startswith("delete_announcement:")
+    )
 
-    # Регистрация обработчиков для фильтров по ключевым словам
+    # Обработчики для возврата в меню поиска
     dp.register_callback_query_handler(
-        lambda call, state: filter_keyword_team(call, locale, state),
-        lambda c: c.data == "filter_keyword_team",
+        lambda call, state: process_back_to_search_menu(call, locale),
+        lambda c: c.data == "back_to_search_menu",
         state="*"
     )
     dp.register_callback_query_handler(
-        lambda call, state: filter_keyword_club(call, locale, state),
-        lambda c: c.data == "filter_keyword_club",
+        lambda call, state: process_back_to_search_options_menu(call, locale),
+        lambda c: c.data == "back_to_search_options_menu",
         state="*"
     )
+    dp.register_callback_query_handler(
+        lambda call, state: process_back_to_search_options_menu(call, locale),
+        lambda c: c.data == "back_to_search_options_club_menu",
+        state="*"
+    )
+
     dp.register_callback_query_handler(
         lambda call, state: filter_by_keyword(call, locale, state),
-        lambda c: c.data.startswith("keyword_filter:"),
+        lambda c: c.data == "skip_keyword",
         state="*"
     )
-
-async def get_next_team(callback: types.CallbackQuery, locale):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    announcement = get_next_announcement("team", callback.from_user.id)
-    if announcement:
-        # Используем функцию для отображения с ключевым словом
-        text = display_announcement_with_keyword(announcement, locale)
-        
-        # Проверяем, есть ли больше одного объявления
-        count = get_announcements_count("team", callback.from_user.id)
-        has_next = count > 1
-        
-        await callback.message.delete()
-        
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await callback.message.bot.send_photo(
-                chat_id=callback.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "team"
-                )
-            )
-        elif media_type == "video":
-            await callback.message.bot.send_video(
-                chat_id=callback.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "team"
-                )
-            )
-        else:  # animation (GIF)
-            await callback.message.bot.send_animation(
-                chat_id=callback.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "team"
-                )
-            )
-    else:
-        await callback.message.edit_text(locale["no_announcements"], reply_markup=search_options_keyboard(locale))
-
-async def get_next_club(callback: types.CallbackQuery, locale):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    announcement = get_next_announcement("club", callback.from_user.id)
-    if announcement:
-        # Используем функцию для отображения с ключевым словом
-        text = display_announcement_with_keyword(announcement, locale)
-        
-        # Проверяем, есть ли больше одного объявления
-        count = get_announcements_count("club", callback.from_user.id)
-        has_next = count > 1
-        
-        await callback.message.delete()
-        
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await callback.message.bot.send_photo(
-                chat_id=callback.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "club"
-                )
-            )
-        elif media_type == "video":
-            await callback.message.bot.send_video(
-                chat_id=callback.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "club"
-                )
-            )
-        else:  # animation (GIF)
-            await callback.message.bot.send_animation(
-                chat_id=callback.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(
-                    locale,
-                    announcement["id"],
-                    announcement["user_id"],
-                    has_next,
-                    False,
-                    "club"
-                )
-            )
-    else:
-        await callback.message.edit_text(locale["no_announcements"], reply_markup=search_options_club_keyboard(locale))
-
-async def filter_new_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    await process_filtered_search(callback, locale, "team", "new", state)
-
-async def filter_old_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    await process_filtered_search(callback, locale, "team", "old", state)
-
-async def filter_premium_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    await process_filtered_search(callback, locale, "team", "premium", state)
-
-async def filter_new_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    await process_filtered_search(callback, locale, "club", "new", state)
-
-async def filter_old_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    await process_filtered_search(callback, locale, "club", "old", state)
-
-async def filter_premium_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска премиум объявлений клубов
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
     
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "club", "premium")
-    )
-
-async def delete_announcement(callback: types.CallbackQuery, locale):
-    # Получаем данные из callback
-    data = callback.data.split(":")
-    announcement_id = int(data[1])
-    
-    # Получаем объявление из базы
-    announcement_data = get_announcement_by_id(announcement_id)
-    if not announcement_data:
-        await callback.answer("Объявление не найдено", show_alert=True)
-        return
-    
-    announcement_type = announcement_data["announcement_type"]
-    
-    # Получаем текущего пользователя
-    user_id = callback.from_user.id
-    
-    # Открываем сессию базы данных
-    session = SessionLocal()
-    
-    try:
-        # Находим объявление
-        announcement = session.query(Announcement).filter(Announcement.id == announcement_id).first()
-        
-        # Проверяем, принадлежит ли объявление пользователю
-        if announcement and announcement.user_id == user_id:
-            # Удаляем объявление
-            session.delete(announcement)
-            session.commit()
-            
-            # Отвечаем пользователю
-            await callback.answer(locale["announcement_deleted"], show_alert=True)
-            
-            # Перенаправляем пользователя на соответствующую страницу объявлений
-            if announcement_type == "team":
-                await my_announcement_team(callback, locale, None)
-            else:
-                await my_announcement_club(callback, locale, None)
-        else:
-            await callback.answer("Вы не можете удалить это объявление", show_alert=True)
-    except Exception as e:
-        print(f"Error deleting announcement: {e}")
-        await callback.answer(locale["error_deleting_announcement"], show_alert=True)
-    finally:
-        session.close()
-
-async def write_to_owner(callback: types.CallbackQuery, locale):
-    """
-    Обработчик для кнопки "Написать"
-    Так как эта кнопка уже содержит URL, этот обработчик не вызывается
-    и сохранен только для совместимости
-    """
-    await callback.answer()
-
-async def confirm_normal_search_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    """Подтверждение обычного поиска команды"""
-    await callback.answer()  # Просто отвечаем на callback без изменения сообщения
-    await show_next_team_announcement(callback.message, locale)
-
-async def confirm_normal_search_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    """Подтверждение обычного поиска клуба"""
-    await callback.answer()  # Просто отвечаем на callback без изменения сообщения
-    await show_next_club_announcement(callback.message, locale)
-
-async def show_next_team_announcement(message: types.Message, locale):
-    """Показать следующее объявление команды"""
-    announcement = get_next_announcement("team", message.from_user.id)
-    if announcement:
-        count = get_announcements_count("team", message.from_user.id)
-        has_next = count > 1
-        has_prev = False  # На первой странице нет кнопки "назад"
-        
-        # Используем функцию для отображения с ключевым словом
-        text = display_announcement_with_keyword(announcement, locale)
-        
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await message.bot.send_photo(
-                message.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-            )
-        elif media_type == "video":
-            await message.bot.send_video(
-                message.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-            )
-        else:  # animation (GIF)
-            await message.bot.send_animation(
-                message.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-            )
-    else:
-        await message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-
-async def show_next_club_announcement(message: types.Message, locale):
-    """Показать следующее объявление клуба"""
-    announcement = get_next_announcement("club", message.from_user.id)
-    if announcement:
-        count = get_announcements_count("club", message.from_user.id)
-        has_next = count > 1
-        has_prev = False  # На первой странице нет кнопки "назад"
-        
-        # Используем функцию для отображения с ключевым словом
-        text = display_announcement_with_keyword(announcement, locale)
-        
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        
-        # Определяем тип медиа и отправляем соответствующим методом
-        media_type = announcement.get("media_type", "photo")
-        if media_type == "photo":
-            await message.bot.send_photo(
-                message.from_user.id,
-                photo=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-            )
-        elif media_type == "video":
-            await message.bot.send_video(
-                message.from_user.id,
-                video=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-            )
-        else:  # animation (GIF)
-            await message.bot.send_animation(
-                message.from_user.id,
-                animation=announcement["image_id"],
-                caption=text,
-                reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-            )
-    else:
-        await message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-
-async def process_filtered_search_next(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для перехода к следующему объявлению в отфильтрованном списке
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    
-    # Проверяем, есть ли следующее объявление
-    if current_index + 1 < len(announcement_ids):
-        current_index += 1
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            
-            # Обновляем индекс в состоянии
-            await state.update_data(current_index=current_index)
-        else:
-            # Если объявление не найдено, показываем сообщение об ошибке
-            await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-    else:
-        # Если нет следующего объявления, показываем сообщение
-        await callback.answer(locale["no_more_announcements"], show_alert=True)
-
-async def process_filtered_search_prev(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для перехода к предыдущему объявлению в отфильтрованном списке
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    
-    # Проверяем, есть ли предыдущее объявление
-    if current_index > 0:
-        current_index -= 1
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            
-            # Обновляем индекс в состоянии
-            await state.update_data(current_index=current_index)
-        else:
-            # Если объявление не найдено, показываем сообщение об ошибке
-            await callback.message.edit_text(locale["no_announcements"], reply_markup=inline_main_menu_keyboard(locale))
-    else:
-        # Если нет предыдущего объявления, показываем сообщение
-        await callback.answer(locale["no_more_announcements"], show_alert=True)
-
-async def process_filtered_search_by_keyword(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска объявлений по ключевому слову
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    keyword = data.get("keyword")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, announcement_type, "new")
-    )
-
-async def process_filtered_search_premium(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска премиум объявлений
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, announcement_type, "premium")
-    )
-
-async def process_filtered_search_old(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска старых объявлений
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, announcement_type, "old")
-    )
-
-async def process_filtered_search_new(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска новых объявлений
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    announcement_type = data.get("announcement_type")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, announcement_type)
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, announcement_type, "new")
-    )
-
-async def process_filtered_search_premium_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска премиум объявлений команд
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "team", "premium")
-    )
-
-async def process_filtered_search_old_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска старых объявлений команд
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "team", "old")
-    )
-
-async def process_filtered_search_old_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска старых объявлений клубов
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "club", "old")
-    )
-
-async def process_filtered_search_new_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска новых объявлений команд
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "team", "new")
-    )
-
-async def process_filtered_search_new_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска новых объявлений клубов
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "club", "new")
-    )
-
-async def process_filtered_search_by_keyword_team(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска объявлений команд по ключевому слову
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    keyword = data.get("keyword")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "team")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "team", "new")
-    )
-
-async def process_filtered_search_by_keyword_club(callback: types.CallbackQuery, locale, state: FSMContext):
-    """
-    Обработчик для поиска объявлений клубов по ключевому слову
-    """
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем текущие данные состояния
-    data = await state.get_data()
-    announcement_ids = data.get("announcement_ids", [])
-    current_index = data.get("current_index", 0)
-    keyword = data.get("keyword")
-    
-    # Если есть текущее объявление, показываем его
-    if announcement_ids and current_index < len(announcement_ids):
-        announcement_id = announcement_ids[current_index]
-        announcement = get_announcement_by_id(announcement_id)
-        if announcement:
-            text = display_announcement_with_keyword(announcement, locale)
-            has_next = current_index < len(announcement_ids) - 1
-            has_prev = current_index > 0
-            
-            # Определяем тип медиа и отправляем соответствующим методом
-            media_type = announcement.get("media_type", "photo")
-            if media_type == "photo":
-                await callback.message.edit_media(
-                    types.InputMediaPhoto(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            elif media_type == "video":
-                await callback.message.edit_media(
-                    types.InputMediaVideo(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            else:  # animation (GIF)
-                await callback.message.edit_media(
-                    types.InputMediaAnimation(
-                        media=announcement["image_id"],
-                        caption=text
-                    ),
-                    reply_markup=announcement_keyboard(locale, announcement["id"], announcement["user_id"], has_next, has_prev, "club")
-                )
-            return
-    
-    # Если нет текущего объявления или оно не найдено, показываем меню фильтров
-    await callback.message.edit_text(
-        locale["search_filters"],
-        reply_markup=search_filters_keyboard(locale, "club", "new")
-    )
-
-async def process_view_my_announcement(callback: types.CallbackQuery, locale, state: FSMContext):
-    """Обработчик для просмотра конкретного объявления пользователя"""
-    locale = get_user_language(callback.from_user.id)
-    await callback.answer()
-    
-    # Получаем ID объявления из callback_data
-    announcement_id = int(callback.data.split(":")[1])
-    
-    # Получаем объявление по ID
-    announcement = get_announcement_by_id(announcement_id)
-    
-    if not announcement or announcement["user_id"] != callback.from_user.id:
-        await callback.message.edit_text(
-            "Объявление не найдено или не принадлежит вам.",
-            reply_markup=inline_main_menu_keyboard(locale)
-        )
-        return
-    
-    # Формируем клавиатуру для просмотра объявления с удалением
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    
-    # Добавляем кнопку удаления
-    kb.add(types.InlineKeyboardButton(
-        text=locale.get("button_delete", "🗑️ Удалить"),
-        callback_data=f"delete_announcement:{announcement_id}"
-    ))
-    
-    # Добавляем кнопку назад к списку объявлений
-    kb.add(types.InlineKeyboardButton(
-        text=locale["button_back"],
-        callback_data=f"my_announcement_{announcement['announcement_type']}"
-    ))
-    
-    # Показываем объявление
-    text = display_announcement_with_keyword(announcement, locale)
-    
-    try:
-        media_type = announcement.get("media_type", "photo")
-        
-        if media_type == "photo":
-            media = types.InputMediaPhoto(announcement["image_id"], caption=text)
-        elif media_type == "video":
-            media = types.InputMediaVideo(announcement["image_id"], caption=text)
-        elif media_type == "animation":
-            media = types.InputMediaAnimation(announcement["image_id"], caption=text)
-        else:
-            media = types.InputMediaPhoto(announcement["image_id"], caption=text)
-            
-        await callback.message.edit_media(media, reply_markup=kb)
-    except Exception as e:
-        logger.error(f"Error showing announcement: {str(e)}")
-        await callback.message.edit_text(
-            f"Ошибка при отображении объявления: {str(e)}",
-            reply_markup=inline_main_menu_keyboard(locale)
-        )
-
-def register_search_handlers(dp: Dispatcher, locale):
-    # ... existing code ...
-    
-    # Регистрируем обработчик для просмотра конкретного объявления пользователя
+    # Обработчики для избранного
     dp.register_callback_query_handler(
-        lambda c, state: process_view_my_announcement(c, locale, state),
-        lambda c: c.data.startswith("view_my_announcement:"),
-        state="*"
+        lambda call: process_favorite(call, locale, "team", None),
+        lambda c: c.data.startswith("favorite:")
+    )
+    dp.register_callback_query_handler(
+        lambda call: process_unfavorite(call, locale),
+        lambda c: c.data.startswith("unfavorite:")
     )
     
-    # ... existing code ...
+    # Обработчики для перехода между объявлениями
+    dp.register_callback_query_handler(
+        lambda call, state: process_next_team(call, locale, state),
+        lambda c: c.data.startswith("next_")
+    )
+    dp.register_callback_query_handler(
+        lambda call, state: process_prev_team(call, locale, state),
+        lambda c: c.data.startswith("prev_")
+    )

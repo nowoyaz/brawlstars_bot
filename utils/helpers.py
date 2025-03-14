@@ -25,6 +25,32 @@ async def check_channel_subscription(bot, user_id: int, channel_id: str) -> bool
         print(f"Ошибка при проверке подписки: {str(e)}")
         return False  # В случае ошибки считаем, что пользователь не подписан
 
+def check_all_sponsor_subscriptions(user_id: int) -> bool:
+    """
+    Проверяет подписку пользователя на всех активных спонсоров
+    
+    Args:
+        user_id: ID пользователя
+    
+    Returns:
+        bool: True, если пользователь подписан на всех спонсоров, иначе False
+    """
+    from database.crud import get_sponsors, check_user_subscription
+    
+    # Получаем всех активных спонсоров
+    sponsors = get_sponsors(is_active_only=True)
+    
+    if not sponsors:
+        # Если нет активных спонсоров, считаем, что пользователь подписан на всех
+        return True
+    
+    # Проверяем подписку на каждого спонсора
+    for sponsor in sponsors:
+        if not check_user_subscription(user_id, sponsor.id):
+            return False
+    
+    return True
+
 def load_locale(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -409,19 +435,19 @@ def process_referral(referred_id: int, inviter_id: int):
     # Проверяем, не был ли уже зафиксирован реферал
     existing = session.query(Referral).filter(Referral.referred_id == referred_id).first()
     if not existing and referred_id != inviter_id:
-        referral = Referral(inviter_id=inviter_id, referred_id=referred_id)
+        referral = Referral(referrer_id=inviter_id, referred_id=referred_id)
         session.add(referral)
         # Начисляем пригласившему 20 монет
-        user = session.query(User).filter(User.id == inviter_id).first()
+        user = session.query(User).filter(User.tg_id == inviter_id).first()
         if user:
-            user.crystals += 20
+            user.coins += 20
         session.commit()
     session.close()
 
 
 def get_referral_count(user_id: int) -> int:
     session = SessionLocal()
-    count = session.query(Referral).filter(Referral.inviter_id == user_id).count()
+    count = session.query(Referral).filter(Referral.referrer_id == user_id).count()
     session.close()
     return count
 
@@ -525,6 +551,9 @@ def use_promo_code(code: str, user_id: int) -> dict:
         result['duration_days'] = duration_days
         # Вычисляем дату окончания премиума
         result['end_date'] = datetime.datetime.now() + datetime.timedelta(days=duration_days)
+        
+        # Выдаем достижение "Легенда" при активации промокода
+        check_premium_achievement(user_id)
     else:
         # Если неуспешно, добавляем код ошибки на основе сообщения
         if 'не найден' in message:
@@ -541,3 +570,42 @@ def use_promo_code(code: str, user_id: int) -> dict:
             result['error_code'] = 'unknown'
     
     return result
+
+def record_section_visit(user_id: int, section: str):
+    """Запись посещения раздела и проверка достижения 'Искатель'"""
+    from database.achievements import record_section_visit as db_record_section_visit
+    return db_record_section_visit(user_id, section)
+
+def award_achievement(user_id: int, achievement_key: str):
+    """Выдача достижения пользователю"""
+    from database.achievements import award_achievement as db_award_achievement
+    return db_award_achievement(user_id, achievement_key)
+
+def check_announcement_achievements(user_id: int, announcement_type: str):
+    """Проверяет и выдает достижения связанные с объявлениями"""
+    from database.achievements import award_achievement, ACHIEVEMENT_POPULAR, ACHIEVEMENT_CLUB_FIGHTER
+    
+    if announcement_type == "team":
+        award_achievement(user_id, ACHIEVEMENT_POPULAR)
+    elif announcement_type == "club":
+        award_achievement(user_id, ACHIEVEMENT_CLUB_FIGHTER)
+
+def check_premium_achievement(user_id: int):
+    """Проверяет и выдает достижение 'Легенда' при покупке премиума"""
+    from database.achievements import award_achievement, ACHIEVEMENT_LEGEND
+    award_achievement(user_id, ACHIEVEMENT_LEGEND)
+
+def check_gift_achievement(user_id: int):
+    """Проверяет и выдает достижение 'Испытать удачу' при получении подарка"""
+    from database.achievements import award_achievement, ACHIEVEMENT_LUCKY
+    award_achievement(user_id, ACHIEVEMENT_LUCKY)
+
+def check_coins_achievement(user_id: int):
+    """Проверяет и выдает достижение 'Липрикон' при накоплении 15000 монет"""
+    from database.achievements import check_coins_achievement as db_check_coins_achievement
+    return db_check_coins_achievement(user_id)
+
+def check_referral_achievements(user_id: int):
+    """Проверяет и выдает реферальные достижения"""
+    from database.achievements import check_referral_achievements as db_check_referral_achievements
+    return db_check_referral_achievements(user_id)

@@ -126,3 +126,53 @@ class PromoUse(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     used_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+class Achievement(Base):
+    """Модель для описания достижения"""
+    __tablename__ = "achievements"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, nullable=False)  # Уникальный ключ достижения
+    name = Column(String, nullable=False)  # Название достижения
+    description = Column(String, nullable=False)  # Описание достижения
+    icon = Column(String, default="🏆")  # Эмодзи или код иконки 
+    is_purchasable = Column(Boolean, default=False)  # Можно ли купить достижение
+    price = Column(Integer, default=0)  # Цена в монетах, если можно купить
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class UserAchievement(Base):
+    """Модель для хранения достижений пользователя"""
+    __tablename__ = "user_achievements"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    achievement_id = Column(Integer, ForeignKey("achievements.id"), nullable=False)
+    achieved_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Отношение к моделям User и Achievement
+    user = relationship("User", backref="achievements")
+    achievement = relationship("Achievement")
+
+
+class UserVisitedSection(Base):
+    """Модель для отслеживания посещенных разделов пользователем (для достижения 'Искатель')"""
+    __tablename__ = "user_visited_sections"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    section = Column(String, nullable=False)  # Название раздела
+    visited_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Отношение к модели User
+    user = relationship("User", backref="visited_sections")
+
+
+class UserSecretPurchase(Base):
+    """Модель для отслеживания покупок секретного контента"""
+    __tablename__ = "user_secret_purchases"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content_key = Column(String, nullable=False)  # Ключ контента
+    purchased_at = Column(DateTime, default=datetime.datetime.utcnow)
+    price = Column(Integer, nullable=False)  # Цена покупки
+    
+    # Отношение к модели User
+    user = relationship("User", backref="secret_purchases")
+

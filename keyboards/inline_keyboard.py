@@ -160,7 +160,7 @@ def report_reason_keyboard(locale, announcement_id, announcement_type):
 
 
 # Клавиатура для фильтров поиска
-def search_filters_keyboard(locale, announcement_type):
+def search_filters_keyboard(locale, announcement_type, filter_type=None):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(text=locale["filter_new"], callback_data=f"filtered_search_{announcement_type}_new"),
@@ -266,6 +266,9 @@ def additional_keyboard(locale):
     kb.add(
         InlineKeyboardButton(text=locale["button_referral_program"], callback_data="referral"),
         InlineKeyboardButton(text=locale["button_favorites"], callback_data="favorites")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_achievements", "🏆 Достижения"), callback_data="achievements")
     )
     kb.add(
         InlineKeyboardButton(text=locale["button_support"], url=SUPPORT_LINK)
@@ -457,4 +460,94 @@ def back_to_menu_keyboard(locale):
     """Клавиатура с кнопкой возврата в меню"""
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton(text=locale["back_to_menu"], callback_data="back_to_menu"))
+    return kb
+
+def achievements_keyboard(locale):
+    """Клавиатура для раздела достижений"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_my_achievements", "🏆 Мои достижения"), 
+            callback_data="my_achievements"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_available_achievements", "🔍 Доступные достижения"), 
+            callback_data="available_achievements"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_buy_achievement", "💰 Купить достижение"), 
+            callback_data="buy_achievement"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_buy_secret", "🔍 Купить секретный контент"), 
+            callback_data="secret_content"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_back", "🔙 Назад"), callback_data="additional")
+    )
+    return kb
+
+def back_to_achievements_keyboard(locale):
+    """Клавиатура для возврата к списку достижений"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_back_to_achievements", "🔙 К достижениям"), 
+            callback_data="achievements"
+        )
+    )
+    return kb
+
+def buy_achievement_confirm_keyboard(locale, achievement_id):
+    """Клавиатура для подтверждения покупки достижения"""
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_confirm_purchase", "✅ Купить"), 
+            callback_data=f"confirm_buy_achievement:{achievement_id}"
+        ),
+        InlineKeyboardButton(
+            text=locale.get("button_cancel", "❌ Отмена"), 
+            callback_data="buy_achievement"
+        )
+    )
+    return kb
+
+def secret_content_keyboard(locale):
+    """Клавиатура для секретного контента"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_buy_secret_video", "🎬 Купить секретный ролик бубса (5000 монет)"), 
+            callback_data="buy_secret_video"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_back_to_achievements", "🔙 К достижениям"), 
+            callback_data="achievements"
+        )
+    )
+    return kb
+
+def confirm_secret_purchase_keyboard(locale, content_key):
+    """Клавиатура для подтверждения покупки секретного контента"""
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_confirm_purchase", "✅ Купить"), 
+            callback_data=f"confirm_secret_purchase:{content_key}"
+        ),
+        InlineKeyboardButton(
+            text=locale.get("button_cancel", "❌ Отмена"), 
+            callback_data="secret_content"
+        )
+    )
     return kb

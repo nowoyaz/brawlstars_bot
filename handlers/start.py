@@ -2,23 +2,58 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher.storage import FSMContext
 from keyboards.inline_keyboard import start_keyboard, inline_main_menu_keyboard
-from utils.helpers import ensure_user_exists, process_referral  # ensure_user_exists – функция создания пользователя, если его нет
-from utils.helpers import get_user_language
+from utils.helpers import ensure_user_exists, process_referral, check_channel_subscription, load_locale, get_user_language
 from config import CHANNEL_ID
+import re
+from database.crud import create_new_user, get_user_by_tg_id, is_user_banned
+from utils.helpers import check_referral_achievements
 
 async def cmd_start(message: types.Message, locale, state: FSMContext):
+    """
+    Обработчик команды /start
+    Проверяет наличие пользователя в базе, если его нет - создает
+    """
+    user_locale = get_user_language(message.from_user.id)
+    
+    # Проверяем, заблокирован ли пользователь
+    if is_user_banned(message.from_user.id):
+        await message.answer("Вы заблокированы в боте.")
+        return
+    
+    # Проверяем, существует ли пользователь в базе
+    user = get_user_by_tg_id(message.from_user.id)
+    
+    # Если пользователя нет в базе, создаем нового
+    if not user:
+        # Проверяем наличие реферальной ссылки
+        args = message.get_args()
+        referrer_id = None
+        
+        # Если есть аргументы, пробуем найти ID реферера
+        if args:
+            try:
+                # Пытаемся преобразовать аргумент в целое число
+                referrer_id = int(args)
+            except ValueError:
+                # Если не получается, ничего не делаем
+                pass
+                
+        # Создаем нового пользователя
+        user = create_new_user(
+            tg_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            referrer_id=referrer_id
+        )
+        
+        # Проверяем достижения реферера, если он был указан
+        if referrer_id:
+            check_referral_achievements(referrer_id)
+    
     # Завершаем все FSM-состояния
-    locale = get_user_language(message.from_user.id)
     await state.finish()
-    # Создаем запись пользователя, если ее еще нет
-    ensure_user_exists(message.from_user.id, message.from_user.username or message.from_user.full_name)
-    # Если есть аргумент, обрабатываем реферал
-    args = message.get_args()  # аргументы после /start
-    if args.isdigit():
-        inviter_id = int(args)
-        process_referral(message.from_user.id, inviter_id)
-    text = locale["start_text"]
-    await message.answer(text, reply_markup=start_keyboard(locale))
+    text = user_locale["start_text"]
+    await message.answer(text, reply_markup=start_keyboard(user_locale))
 
 
 async def process_start_callback(callback: types.CallbackQuery, locale):
