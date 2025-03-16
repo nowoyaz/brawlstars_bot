@@ -68,7 +68,7 @@ def get_premium_prices():
                 PremiumPrice(duration_days=30, price=500),  # 1 месяц
                 PremiumPrice(duration_days=180, price=2500),  # 6 месяцев
                 PremiumPrice(duration_days=365, price=4500),  # 1 год
-                PremiumPrice(duration_days=9999, price=9900)  # навсегда
+                PremiumPrice(duration_days=36500, price=9900)  # навсегда
             ]
             
             for price in default_prices:
@@ -389,32 +389,40 @@ def delete_promo_code(promo_id: int):
     return result
 
 def deactivate_promo_code(promo_id: int):
-    """
-    Деактивирует промокод по ID (не удаляя его)
-    
-    Args:
-        promo_id (int): ID промокода
-    
-    Returns:
-        bool: True в случае успеха, False в случае ошибки
-    """
+    """Деактивирует промокод"""
     session = SessionLocal()
     try:
         promo = session.query(PromoCode).filter(PromoCode.id == promo_id).first()
         if not promo:
-            session.close()
             return False
         
         promo.is_active = False
         session.commit()
-        result = True
+        return True
     except Exception as e:
-        print(f"Error deactivating promo code: {e}")
+        logger.error(f"Ошибка при деактивации промокода: {str(e)}")
         session.rollback()
-        result = False
+        return False
     finally:
         session.close()
-    return result
+
+def update_promo_code(promo_id: int, is_active: bool = True):
+    """Обновляет статус промокода"""
+    session = SessionLocal()
+    try:
+        promo = session.query(PromoCode).filter(PromoCode.id == promo_id).first()
+        if not promo:
+            return False
+        
+        promo.is_active = is_active
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении статуса промокода: {str(e)}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 def use_promo_code(user_id: int, code: str):
     """
@@ -608,6 +616,60 @@ def add_user_crystals(tg_id: int, amount: int) -> bool:
     except Exception as e:
         session.rollback()
         print(f"Error adding crystals to user: {e}")
+        return False
+    finally:
+        session.close()
+
+def update_user_crystals(tg_id: int, amount: int) -> bool:
+    """
+    Устанавливает определенное количество кристаллов пользователю
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+        amount (int): Новое количество кристаллов
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == tg_id).first()
+        if not user:
+            return False
+            
+        user.crystals = amount
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating user crystals: {e}")
+        return False
+    finally:
+        session.close()
+
+def update_user_coins(tg_id: int, amount: int) -> bool:
+    """
+    Устанавливает определенное количество монет пользователю
+    
+    Args:
+        tg_id (int): Telegram ID пользователя
+        amount (int): Новое количество монет
+    
+    Returns:
+        bool: True в случае успеха, False в случае ошибки
+    """
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == tg_id).first()
+        if not user:
+            return False
+            
+        user.coins = amount
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating user coins: {e}")
         return False
     finally:
         session.close() 

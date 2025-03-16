@@ -163,7 +163,6 @@ class UserVisitedSection(Base):
     # Отношение к модели User
     user = relationship("User", backref="visited_sections")
 
-
 class UserSecretPurchase(Base):
     """Модель для отслеживания покупок секретного контента"""
     __tablename__ = "user_secret_purchases"
@@ -175,4 +174,5 @@ class UserSecretPurchase(Base):
     
     # Отношение к модели User
     user = relationship("User", backref="secret_purchases")
+
 

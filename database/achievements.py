@@ -14,7 +14,6 @@ ACHIEVEMENT_EXPLORER = "explorer"
 ACHIEVEMENT_LEGEND = "legend"
 ACHIEVEMENT_LEPRECHAUN = "leprechaun"
 ACHIEVEMENT_LUCKY = "lucky"
-ACHIEVEMENT_FAN = "fan"
 ACHIEVEMENT_BUSINESS = "business"
 ACHIEVEMENT_FOLLOW_ME = "follow_me"
 ACHIEVEMENT_FRIEND = "friend"
@@ -91,13 +90,6 @@ def initialize_achievements():
                 name="Испытать удачу",
                 description="Принять участие в розыгрыше монет",
                 icon="🎁"
-            ),
-            # Купить секретный ролик
-            Achievement(
-                key=ACHIEVEMENT_FAN,
-                name="Преданный фанат",
-                description="Купить секретный ролик бубса",
-                icon="🎬"
             ),
             # Пригласить 1 человека
             Achievement(
@@ -492,7 +484,7 @@ def check_referral_achievements(user_id: int):
         session.close()
 
 def record_secret_purchase(user_id: int, content_key: str, price: int):
-    """Записать покупку секретного контента и выдать достижение"""
+    """Записать покупку секретного контента"""
     session = SessionLocal()
     try:
         # Находим внутренний ID пользователя по tg_id
@@ -515,26 +507,6 @@ def record_secret_purchase(user_id: int, content_key: str, price: int):
         )
         
         session.add(purchase)
-        
-        # Выдаем достижение "Преданный фанат"
-        achievement = session.query(Achievement).filter(
-            Achievement.key == ACHIEVEMENT_FAN
-        ).first()
-        
-        if achievement:
-            existing = session.query(UserAchievement).filter(
-                UserAchievement.user_id == user.id,
-                UserAchievement.achievement_id == achievement.id
-            ).first()
-            
-            if not existing:
-                user_achievement = UserAchievement(
-                    user_id=user.id,
-                    achievement_id=achievement.id
-                )
-                
-                session.add(user_achievement)
-        
         session.commit()
         return {"success": True, "crystals_left": user.crystals}
     except Exception as e:

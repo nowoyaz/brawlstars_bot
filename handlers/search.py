@@ -196,6 +196,9 @@ async def process_normal_search_team(callback: types.CallbackQuery, locale, stat
         has_next = count > 1
         has_prev = False  # На первой странице нет кнопки "назад"
         
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_team_announcement_id=announcement["id"])
+        
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
         
@@ -245,6 +248,9 @@ async def process_normal_search_club(callback: types.CallbackQuery, locale, stat
         count = get_announcements_count("club", callback.from_user.id)
         has_next = count > 1
         has_prev = False  # На первой странице нет кнопки "назад"
+        
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_club_announcement_id=announcement["id"])
         
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
@@ -307,6 +313,9 @@ async def process_next_team(callback: types.CallbackQuery, locale, state: FSMCon
     
     announcement = paginated_data["current_announcement"]
     if announcement:
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_team_announcement_id=announcement["id"])
+        
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
         
@@ -383,6 +392,9 @@ async def process_prev_team(callback: types.CallbackQuery, locale, state: FSMCon
     
     announcement = paginated_data["current_announcement"]
     if announcement:
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_team_announcement_id=announcement["id"])
+        
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
         
@@ -465,6 +477,9 @@ async def process_next_club(callback: types.CallbackQuery, locale, state: FSMCon
     
     announcement = paginated_data["current_announcement"]
     if announcement:
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_club_announcement_id=announcement["id"])
+        
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
         
@@ -541,6 +556,9 @@ async def process_prev_club(callback: types.CallbackQuery, locale, state: FSMCon
     
     announcement = paginated_data["current_announcement"]
     if announcement:
+        # Сохраняем ID объявления в состоянии
+        await state.update_data(current_club_announcement_id=announcement["id"])
+        
         # Используем функцию для отображения с ключевым словом
         text = display_announcement_with_keyword(announcement, locale)
         
@@ -1624,10 +1642,6 @@ def register_handlers_search(dp: Dispatcher, locale):
         lambda call, state: my_announcement_club(call, locale, state),
         lambda c: c.data == "my_announcement_club",
         state="*"
-    )
-    dp.register_callback_query_handler(
-        lambda call: delete_announcement(call, locale),
-        lambda c: c.data.startswith("delete_announcement:")
     )
 
     # Обработчики для возврата в меню поиска

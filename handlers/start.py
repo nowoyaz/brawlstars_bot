@@ -90,3 +90,4 @@ def register_handlers_start(dp: Dispatcher, locale):
     dp.register_message_handler(lambda message, state: cmd_start(message, locale, state), commands=["start"])
     dp.register_callback_query_handler(lambda call: process_start_callback(call, locale), lambda c: c.data == "menu")
     dp.register_callback_query_handler(lambda call: check_subscription_callback(call, locale), lambda c: c.data == "check_subscription")
+    dp.register_callback_query_handler(lambda call: check_subscription_callback(call, locale), lambda c: c.data == "start")

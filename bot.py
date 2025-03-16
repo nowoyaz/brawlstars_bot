@@ -13,6 +13,8 @@ from handlers.report import register_handlers_report
 from handlers.achievements import register_handlers_achievements
 from handlers.admin import register_handlers_admin
 from handlers.sponsors import register_handlers_sponsors
+from handlers.shop import register_handlers_shop
+from handlers.profile import register_profile_handlers
 from utils.localization import get_locale
 
 # Настройка логирования
@@ -46,7 +48,9 @@ def register_all_handlers():
             ("crystals", register_handlers_crystals),
             ("premium", register_handlers_premium),
             ("report", register_handlers_report),
-            ("sponsors", register_handlers_sponsors)  # Добавляем обработчики спонсоров
+            ("sponsors", register_handlers_sponsors),  # Добавляем обработчики спонсоров
+            ("shop", register_handlers_shop),  # Добавляем обработчики магазина
+            ("profile", register_profile_handlers)  # Добавляем обработчики профиля
         ]
         
         for name, register_func in handlers:

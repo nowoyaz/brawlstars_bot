@@ -1,6 +1,8 @@
 from typing import List, Dict
 from database.models import User
 from database.session import SessionLocal
+from database.achievements import award_achievement, ACHIEVEMENT_LEGEND
+from utils.helpers import set_premium_status
 
 ACHIEVEMENTS = {
     "major": {
@@ -51,13 +53,6 @@ ACHIEVEMENTS = {
         "description": "Принять участие в розыгрыше монет",
         "emoji": "🎲",
         "condition": lambda user: user.participated_in_giveaway
-    },
-    "true_fan": {
-        "id": "true_fan",
-        "name": "Преданный фанат",
-        "description": "Купить секретный ролик бубса",
-        "emoji": "🎬",
-        "condition": lambda user: user.has_secret_video
     },
     "business": {
         "id": "business",
@@ -137,3 +132,7 @@ def format_achievements_message(achievements: List[str], locale: dict) -> str:
             message += locale.get("achievement_not_completed", "❌ Не выполнено") + "\n\n"
     
     return message 
+
+def check_premium_achievement(user_id: int):
+    """Проверяет и выдает достижение 'Легенда' при покупке премиума"""
+    award_achievement(user_id, ACHIEVEMENT_LEGEND) 

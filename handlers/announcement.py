@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from utils.helpers import save_announcement, get_user_language, is_user_premium, can_create_announcement, check_announcement_achievements
-from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard, rules_keyboard
+from utils.helpers import save_announcement, get_user_language, is_user_premium, can_create_announcement, check_announcement_achievements, get_announcement_by_id, display_announcement_with_keyword
+from keyboards.inline_keyboard import inline_main_menu_keyboard, action_announcement_keyboard, preview_announcement_keyboard, keyword_selection_keyboard, rules_keyboard, announcement_view_keyboard
 from states.announcement import AnnouncementState
+from database.session import SessionLocal
+from database.models import Announcement
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +295,111 @@ async def back_to_menu(callback: types.CallbackQuery, locale, state: FSMContext)
     await state.finish()
     await callback.message.edit_text(locale["menu_text"], reply_markup=inline_main_menu_keyboard(locale))
 
+async def view_my_announcement(callback: types.CallbackQuery, locale):
+    """Показывает конкретное объявление пользователя"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем ID объявления из callback data
+    announcement_id = int(callback.data.split(":")[1])
+    
+    # Получаем объявление
+    announcement = get_announcement_by_id(announcement_id)
+    if announcement:
+        # Используем функцию для отображения с ключевым словом
+        text = display_announcement_with_keyword(announcement, locale)
+        
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        # Создаем клавиатуру с кнопкой удаления
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(types.InlineKeyboardButton(
+            text=locale.get("button_delete", "🗑 Удалить объявление"),
+            callback_data=f"delete_announcement:{announcement_id}"
+        ))
+        kb.add(types.InlineKeyboardButton(
+            text=locale.get("button_back", "◀️ Назад"),
+            callback_data="back_to_menu"
+        ))
+        
+        # Определяем тип медиа и отправляем соответствующим методом
+        media_type = announcement.get("media_type", "photo")
+        if media_type == "photo":
+            await callback.message.bot.send_photo(
+                callback.from_user.id,
+                photo=announcement["image_id"],
+                caption=text,
+                reply_markup=kb
+            )
+        elif media_type == "video":
+            await callback.message.bot.send_video(
+                callback.from_user.id,
+                video=announcement["image_id"],
+                caption=text,
+                reply_markup=kb
+            )
+        else:  # animation (GIF)
+            await callback.message.bot.send_animation(
+                callback.from_user.id,
+                animation=announcement["image_id"],
+                caption=text,
+                reply_markup=kb
+            )
+    else:
+        await callback.message.edit_text(
+            locale["announcement_not_found"],
+            reply_markup=inline_main_menu_keyboard(locale)
+        )
+
+async def delete_announcement(callback: types.CallbackQuery, locale):
+    """Удаляет объявление пользователя"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем ID объявления из callback data
+    announcement_id = int(callback.data.split(":")[1])
+    
+    session = SessionLocal()
+    announcement = session.query(Announcement).filter(
+        Announcement.id == announcement_id,
+        Announcement.user_id == callback.from_user.id
+    ).first()
+    
+    if announcement:
+        session.delete(announcement)
+        session.commit()
+        session.close()
+        
+        try:
+            # Сначала пробуем удалить текущее сообщение
+            await callback.message.delete()
+        except Exception:
+            pass
+            
+        # Отправляем новое сообщение о успешном удалении
+        await callback.message.bot.send_message(
+            callback.from_user.id,
+            locale["announcement_deleted"],
+            reply_markup=inline_main_menu_keyboard(locale)
+        )
+    else:
+        session.close()
+        try:
+            # Сначала пробуем удалить текущее сообщение
+            await callback.message.delete()
+        except Exception:
+            pass
+            
+        # Отправляем новое сообщение об ошибке
+        await callback.message.bot.send_message(
+            callback.from_user.id,
+            locale["announcement_not_found"],
+            reply_markup=inline_main_menu_keyboard(locale)
+        )
+
 def register_announcement_handlers(dp: Dispatcher, locale):
     # Регистрируем обработчик для кнопки "Назад"
     dp.register_callback_query_handler(
@@ -357,5 +464,17 @@ def register_announcement_handlers(dp: Dispatcher, locale):
         lambda call, state: preview_back(call, locale, state),
         lambda c: c.data == "preview_back",
         state=AnnouncementState.waiting_in_preview
+    )
+
+    # Регистрируем обработчик для просмотра своего объявления
+    dp.register_callback_query_handler(
+        lambda call: view_my_announcement(call, locale),
+        lambda c: c.data.startswith("view_my_announcement:")
+    )
+    
+    # Регистрируем обработчик для удаления объявления
+    dp.register_callback_query_handler(
+        lambda call: delete_announcement(call, locale),
+        lambda c: c.data.startswith("delete_announcement:")
     )
 

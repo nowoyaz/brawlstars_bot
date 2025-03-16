@@ -268,12 +268,72 @@ def check_user_crystals(user_id) -> int:
     session.close()
     return user.crystals if user else 0
 
-def get_user_crystals(user_id) -> int:
+def get_user_crystals(user_id: int) -> int:
+    """Получает количество кристаллов пользователя"""
     session = SessionLocal()
     user = session.query(User).filter(User.id == user_id).first()
     session.close()
     return user.crystals if user else 0
 
+def get_user_coins(user_id: int) -> int:
+    """Получает текущий баланс монет пользователя"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            return 0
+        return user.coins
+    finally:
+        session.close()
+
+def update_user_coins(user_id: int, amount: int) -> bool:
+    """Обновляет баланс монет пользователя"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            return False
+        
+        # Если это вычитание монет, проверяем достаточно ли их
+        if amount < 0 and user.coins + amount < 0:
+            return False
+            
+        user.coins += amount
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Error updating user coins: {e}")
+        return False
+    finally:
+        session.close()
+
+def update_user_crystals(user_id: int, amount: int):
+    """Обновляет количество кристаллов пользователя"""
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if user:
+        user.crystals += amount
+        session.commit()
+    session.close()
+
+def set_premium_status(user_id: int, expiry_date=None):
+    """Устанавливает премиум статус пользователя"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if user:
+            user.is_premium = True
+            user.premium_expiry = expiry_date
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error setting premium status: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 def process_crystal_transfer(sender_id, receiver_id, amount: int):
     session = SessionLocal()
@@ -609,3 +669,25 @@ def check_referral_achievements(user_id: int):
     """Проверяет и выдает реферальные достижения"""
     from database.achievements import check_referral_achievements as db_check_referral_achievements
     return db_check_referral_achievements(user_id)
+
+def display_announcement_with_keyword(announcement, locale):
+    """
+    Функция для форматирования отображения объявления с ключевым словом
+    """
+    if not announcement:
+        return None
+    
+    # Добавляем метку Premium, если пользователь премиум
+    premium_label = locale["premium_label"] + "\n" if announcement.get("is_premium") else ""
+    
+    # Добавляем метку ключевого слова
+    keyword_label = ""
+    if announcement.get("keyword"):
+        keyword_text = locale.get(f"keyword_{announcement['keyword']}", announcement['keyword'])
+        keyword_label = locale["keyword_label"].format(keyword=keyword_text) + "\n"
+    
+    # Добавляем время создания
+    time_label = locale["time_label"] + " " + announcement["created_at"] + "\n"
+    
+    # Формируем полный текст
+    return f"{premium_label}{keyword_label}{time_label}{announcement['description']}"

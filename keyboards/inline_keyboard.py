@@ -4,7 +4,7 @@ from config import CHANNEL_LINK, SUPPORT_LINK, MANAGER_LINK
 def start_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(text=locale["button_start"], callback_data="check_subscription"),
+        InlineKeyboardButton(text=locale["button_start"], callback_data="start"),
         InlineKeyboardButton(text=locale["button_channel"], url=CHANNEL_LINK)
     )
     return kb
@@ -18,6 +18,9 @@ def inline_main_menu_keyboard(locale):
     kb.add(
         InlineKeyboardButton(text=locale["button_crystals"], callback_data="crystals"),
         InlineKeyboardButton(text=locale["button_premium"], callback_data="premium")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale["button_profile"], callback_data="profile")
     )
     kb.add(
         InlineKeyboardButton(text=locale["button_additional"], callback_data="additional")
@@ -99,6 +102,9 @@ def announcement_keyboard(locale, announcement_id, user_id, has_next, has_prev, 
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(text=locale["button_write"], url=f"tg://user?id={user_id}"),
+        InlineKeyboardButton(text=locale.get("button_profile", "👤 Профиль"), callback_data=f"view_profile:{user_id}:{announcement_type}")
+    )
+    kb.add(
         InlineKeyboardButton(text=locale["button_report"], callback_data=f"report:{announcement_id}:{announcement_type}")
     )
     # Изменяем кнопку "Избранное", в обычном режиме должна быть "В избранное"
@@ -271,6 +277,9 @@ def additional_keyboard(locale):
         InlineKeyboardButton(text=locale.get("button_achievements", "🏆 Достижения"), callback_data="achievements")
     )
     kb.add(
+        InlineKeyboardButton(text=locale.get("button_shop", "🛍️ Магазин"), callback_data="shop")
+    )
+    kb.add(
         InlineKeyboardButton(text=locale["button_support"], url=SUPPORT_LINK)
     )
     kb.add(
@@ -337,6 +346,7 @@ def admin_panel_keyboard(locale):
     kb = InlineKeyboardMarkup(row_width=1)
     
     kb.add(
+        InlineKeyboardButton(text=locale.get("admin_give_crystals", "💰 Выдать монеты"), callback_data="give_crystals"),
         InlineKeyboardButton(text=locale.get("give_premium_button", "💎 Выдать премиум"), callback_data="give_premium"),
         InlineKeyboardButton(text=locale.get("premium_prices_button", "💵 Настройка цен"), callback_data="premium_prices"),
         InlineKeyboardButton(text=locale.get("manage_sponsors_button", "🔗 Управление спонсорами"), callback_data="manage_sponsors"),
@@ -485,12 +495,9 @@ def achievements_keyboard(locale):
     )
     kb.add(
         InlineKeyboardButton(
-            text=locale.get("button_buy_secret", "🔍 Купить секретный контент"), 
-            callback_data="secret_content"
+            text=locale.get("button_back_to_menu", "🔙 В меню"), 
+            callback_data="back_to_menu"
         )
-    )
-    kb.add(
-        InlineKeyboardButton(text=locale.get("button_back", "🔙 Назад"), callback_data="additional")
     )
     return kb
 
@@ -500,7 +507,7 @@ def back_to_achievements_keyboard(locale):
     kb.add(
         InlineKeyboardButton(
             text=locale.get("button_back_to_achievements", "🔙 К достижениям"), 
-            callback_data="achievements"
+            callback_data="back_to_achievements"
         )
     )
     return kb
@@ -520,34 +527,82 @@ def buy_achievement_confirm_keyboard(locale, achievement_id):
     )
     return kb
 
+def profile_view_keyboard(locale, user_id, announcement_type):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_write", "✍️ Написать"), url=f"tg://user?id={user_id}")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_back", "🔙 Назад"), callback_data=f"back_to_announcement:{announcement_type}")
+    )
+    return kb
+
 def secret_content_keyboard(locale):
     """Клавиатура для секретного контента"""
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(
-            text=locale.get("button_buy_secret_video", "🎬 Купить секретный ролик бубса (5000 монет)"), 
-            callback_data="buy_secret_video"
+            text=locale.get("button_secret_video", "🎬 Секретный ролик Бубса (2,000 монет)"),
+            callback_data="shop_buy:secret_video"
         )
     )
     kb.add(
         InlineKeyboardButton(
-            text=locale.get("button_back_to_achievements", "🔙 К достижениям"), 
-            callback_data="achievements"
+            text=locale.get("button_back_to_achievements", "🔙 К достижениям"),
+            callback_data="back_to_achievements"
         )
     )
     return kb
 
-def confirm_secret_purchase_keyboard(locale, content_key):
-    """Клавиатура для подтверждения покупки секретного контента"""
-    kb = InlineKeyboardMarkup(row_width=2)
+def shop_keyboard(locale):
+    """Клавиатура для магазина"""
+    kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(
-            text=locale.get("button_confirm_purchase", "✅ Купить"), 
-            callback_data=f"confirm_secret_purchase:{content_key}"
-        ),
+            text=locale.get("button_premium_forever", "💫 Премиум навсегда (100,000 монет)"),
+            callback_data="shop_buy:premium_forever"
+        )
+    )
+    kb.add(
         InlineKeyboardButton(
-            text=locale.get("button_cancel", "❌ Отмена"), 
-            callback_data="secret_content"
+            text=locale.get("button_premium_week", "💫 Премиум на неделю (1,000 монет)"),
+            callback_data="shop_buy:premium_week"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_premium_day", "💫 Премиум на день (400 монет)"),
+            callback_data="shop_buy:premium_day"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_secret_video", "🎬 Секретный ролик Бубса (2,000 монет)"),
+            callback_data="shop_buy:secret_video"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_back_to_additional", "🔙 Назад"),
+            callback_data="back_to_additional"
         )
     )
     return kb
+
+def admin_keyboard(locale):
+    """Клавиатура админ-панели"""
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    keyboard.add(
+        InlineKeyboardButton(locale["admin_give_crystals"], callback_data="give_crystals"),
+        InlineKeyboardButton(locale["admin_give_premium"], callback_data="give_premium"),
+        InlineKeyboardButton(locale["admin_manage_prices"], callback_data="manage_prices"),
+        InlineKeyboardButton(locale["admin_manage_sponsors"], callback_data="manage_sponsors"),
+        InlineKeyboardButton(locale["button_back"], callback_data="menu")
+    )
+    return keyboard
+
+def back_to_admin_keyboard(locale):
+    """Клавиатура для возврата в админ-панель"""
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton(locale["back_to_admin_panel"], callback_data="admin_panel"))
+    return keyboard
