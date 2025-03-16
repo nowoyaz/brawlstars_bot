@@ -3,12 +3,20 @@ import os
 from aiogram.dispatcher.middlewares import BaseMiddleware
 from database.session import SessionLocal
 from database.models import User
+import logging
 
-def get_user_language(user_id: int) -> str:
+logger = logging.getLogger(__name__)
+
+async def get_user_locale(user_id):
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    session.close()
-    return user.language if user and user.language else "ru"
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        return user.language if user else 'ru'
+    except Exception as e:
+        logger.error(f"Error getting user locale: {e}")
+        return 'ru'
+    finally:
+        session.close()
 
 class LocaleMiddleware(BaseMiddleware):
     async def on_pre_process_update(self, update, data):
@@ -20,7 +28,7 @@ class LocaleMiddleware(BaseMiddleware):
         # Если не удалось определить user_id – используем язык по умолчанию
         lang = "ru"
         if user_id is not None:
-            lang = get_user_language(user_id)
+            lang = await get_user_locale(user_id)
         locale_path = os.path.join("locale", f"{lang}.json")
         try:
             with open(locale_path, encoding="utf-8") as f:

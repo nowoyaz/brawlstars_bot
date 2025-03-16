@@ -6,6 +6,7 @@ from database.models import User
 from keyboards.inline_keyboard import shop_keyboard, additional_keyboard
 from utils.achievements import check_and_award_achievements, check_premium_achievement
 from utils.helpers import get_user_language, get_user_coins, update_user_coins, is_user_premium, set_premium_status
+from database.crud import get_bot_setting
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,6 @@ PRICES = {
     "premium_day": 400,
     "secret_video": 2000
 }
-
-# Секретная ссылка на видео
-SECRET_VIDEO_LINK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # Замените на реальную ссылку
 
 async def process_shop(callback: types.CallbackQuery, locale):
     """Обработчик для открытия магазина"""
@@ -53,6 +51,46 @@ async def process_shop_purchase(callback: types.CallbackQuery, locale):
             reply_markup=shop_keyboard(locale)
         )
         return
+
+    # Создаем клавиатуру для подтверждения
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton(
+            text=locale.get("confirm", "✅ Да"),
+            callback_data=f"confirm_purchase:{item_type}"
+        ),
+        types.InlineKeyboardButton(
+            text=locale.get("cancel", "❌ Нет"),
+            callback_data="shop"
+        )
+    )
+
+    # Формируем текст подтверждения в зависимости от типа покупки
+    if item_type == "premium_forever":
+        item_name = "Премиум навсегда"
+    elif item_type == "premium_week":
+        item_name = "Премиум на неделю"
+    elif item_type == "premium_day":
+        item_name = "Премиум на день"
+    elif item_type == "secret_video":
+        item_name = "Секретный ролик Бубса"
+    
+    confirm_text = locale.get(
+        "buy_secret_confirm",
+        "Вы уверены, что хотите купить {name} за {price} монет?"
+    ).format(name=item_name, price=price)
+    
+    # Отправляем сообщение с подтверждением
+    await callback.message.edit_text(confirm_text, reply_markup=kb)
+
+async def process_confirm_purchase(callback: types.CallbackQuery, locale):
+    """Обработчик для подтверждения покупки"""
+    locale = get_user_language(callback.from_user.id)
+    await callback.answer()
+    
+    # Получаем тип покупки из callback_data
+    item_type = callback.data.split(":")[1]
+    price = PRICES.get(item_type)
     
     try:
         # Списываем монеты
@@ -79,11 +117,19 @@ async def process_shop_purchase(callback: types.CallbackQuery, locale):
             set_premium_status(callback.from_user.id, expiry_date)
             check_premium_achievement(callback.from_user.id)
         elif item_type == "secret_video":
-            # Отправляем секретное видео
+            # Получаем ссылку на секретное видео из настроек
+            video_url = get_bot_setting("secret_video_url")
+            if not video_url:
+                video_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # Дефолтная ссылка
+            
+            # Отправляем новое сообщение с секретным видео
             await callback.message.answer(
-                f"🎬 Секретный ролик Бубса: {SECRET_VIDEO_LINK}",
+                f"🎬 Секретный ролик Бубса: {video_url}",
                 reply_markup=shop_keyboard(locale)
             )
+            # Удаляем сообщение с подтверждением
+            await callback.message.delete()
+            return
         
         # Отправляем сообщение об успешной покупке
         await callback.message.edit_text(
@@ -113,6 +159,10 @@ def register_handlers_shop(dp: Dispatcher, locale):
     dp.register_callback_query_handler(
         lambda c: process_shop_purchase(c, locale),
         lambda c: c.data.startswith("shop_buy:")
+    )
+    dp.register_callback_query_handler(
+        lambda c: process_confirm_purchase(c, locale),
+        lambda c: c.data.startswith("confirm_purchase:")
     )
     dp.register_callback_query_handler(
         lambda c: process_back_to_additional(c, locale),

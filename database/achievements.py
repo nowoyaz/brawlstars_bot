@@ -80,8 +80,8 @@ def initialize_achievements():
             # Накопить 15000 монет
             Achievement(
                 key=ACHIEVEMENT_LEPRECHAUN,
-                name="Липрикон",
-                description="Накопить 15,000 монет",
+                name="Лепрекон",
+                description="Накопить 15,000 монет в балансе",
                 icon="🍀"
             ),
             # Получить подарок
@@ -257,11 +257,11 @@ def buy_achievement(user_id: int, achievement_key: str):
             return {"success": False, "reason": "already_awarded"}
             
         # Проверяем, хватает ли монет
-        if user.crystals < achievement.price:
+        if user.coins < achievement.price:
             return {"success": False, "reason": "not_enough_coins"}
             
         # Списываем монеты и выдаем достижение
-        user.crystals -= achievement.price
+        user.coins -= achievement.price
         
         user_achievement = UserAchievement(
             user_id=user.id,
@@ -271,7 +271,7 @@ def buy_achievement(user_id: int, achievement_key: str):
         session.add(user_achievement)
         session.commit()
         
-        return {"success": True, "crystals_left": user.crystals}
+        return {"success": True, "coins_left": user.coins}
     except Exception as e:
         logger.error(f"Ошибка при покупке достижения: {e}")
         session.rollback()
@@ -360,7 +360,7 @@ def check_coins_achievement(user_id: int):
             return False
             
         # Проверяем баланс
-        if user.crystals >= 15000:
+        if user.coins >= 15000:
             # Находим достижение "Липрикон"
             achievement = session.query(Achievement).filter(
                 Achievement.key == ACHIEVEMENT_LEPRECHAUN
@@ -493,11 +493,11 @@ def record_secret_purchase(user_id: int, content_key: str, price: int):
             return {"success": False, "reason": "user_not_found"}
             
         # Проверяем баланс
-        if user.crystals < price:
+        if user.coins < price:
             return {"success": False, "reason": "not_enough_coins"}
             
         # Списываем монеты
-        user.crystals -= price
+        user.coins -= price
         
         # Записываем покупку
         purchase = UserSecretPurchase(
@@ -508,7 +508,7 @@ def record_secret_purchase(user_id: int, content_key: str, price: int):
         
         session.add(purchase)
         session.commit()
-        return {"success": True, "crystals_left": user.crystals}
+        return {"success": True, "coins_left": user.coins}
     except Exception as e:
         logger.error(f"Ошибка при записи покупки секретного контента: {e}")
         session.rollback()

@@ -1,0 +1,13 @@
+{
+    "premium_text": "😎 Be the best with Premium subscription and its cool features!\n\n⭐️ Early access to new features – test them first.\n\n📲 Video and GIF in announcements – attract more teammates!\n\n🔥 Two active announcements – search for two teams or two clubs at the same time.\n\n🏆 Premium badge – stand out among other players.\n\n👍 No ads\n\n😮 No need to subscribe to sponsors for earning coins",
+    "premium_active_text": "😎 Be the best with Premium subscription and its cool features!\n\n⭐️ Early access to new features – test them first.\n\n📲 Video and GIF in announcements – attract more teammates!\n\n🔥 Two active announcements – search for two teams or two clubs at the same time.\n\n🏆 Premium badge – stand out among other players.\n\n👍 No ads\n\n😮 No need to subscribe to sponsors for earning coins\n\n✅ Your premium subscription is active until: {date}",
+    "admin_secret_video": "🎬 Secret Video",
+    "admin_enter_video_url": "Enter a new link for the secret video or send 'cancel' to cancel:",
+    "admin_video_updated": "✅ Secret video link successfully updated!",
+    "admin_video_error": "❌ Error updating link: {error}",
+    "achievement_leprechaun": {
+        "name": "Leprechaun",
+        "description": "Accumulate 15,000 coins in balance",
+        "icon": "🍀"
+    }
+} 

@@ -82,6 +82,33 @@ class PremiumPrice(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+    def __init__(self, duration_days=None, price=None):
+        super().__init__()
+        self.duration_days = duration_days
+        self.price = price
+
+    @classmethod
+    def initialize_default_prices(cls, session):
+        """Инициализирует цены по умолчанию, если их нет"""
+        default_prices = [
+            {"duration_days": 30, "price": 500.0},    # месяц
+            {"duration_days": 180, "price": 2500.0},  # полгода
+            {"duration_days": 365, "price": 4500.0},  # год
+            {"duration_days": 36500, "price": 9900.0} # навсегда
+        ]
+        
+        for price_data in default_prices:
+            existing = session.query(cls).filter_by(duration_days=price_data["duration_days"]).first()
+            if not existing:
+                new_price = cls(duration_days=price_data["duration_days"], price=price_data["price"])
+                session.add(new_price)
+        
+        try:
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+
 class Sponsor(Base):
     __tablename__ = "sponsors"
     id = Column(Integer, primary_key=True, index=True)
@@ -174,5 +201,14 @@ class UserSecretPurchase(Base):
     
     # Отношение к модели User
     user = relationship("User", backref="secret_purchases")
+
+class BotSettings(Base):
+    """Модель для хранения настроек бота"""
+    __tablename__ = "bot_settings"
+    
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False)  # Ключ настройки
+    value = Column(String)  # Значение настройки
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 

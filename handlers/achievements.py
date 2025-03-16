@@ -223,11 +223,11 @@ async def process_confirm_buy_achievement(callback: types.CallbackQuery, locale)
             # Получаем текущий баланс пользователя
             db = SessionLocal()
             user = db.query(User).filter(User.tg_id == callback.from_user.id).first()
-            user_crystals = user.crystals if user else 0
+            user_coins = user.coins if user else 0
             db.close()
             
             text = locale.get("buy_achievement_not_enough_coins", "❌ Недостаточно монет. У вас {balance}, но нужно {price}").format(
-                balance=user_crystals,
+                balance=user_coins,
                 price=achievement.price
             )
         elif result["reason"] == "already_awarded":
@@ -295,33 +295,27 @@ async def process_buy_secret_video(callback: types.CallbackQuery, locale):
 async def process_confirm_secret_purchase(callback: types.CallbackQuery, locale):
     """Обработчик для подтверждения покупки секретного контента"""
     locale = get_user_language(callback.from_user.id)
-    
-    # Получаем ключ контента из callback_data
-    content_key = callback.data.split(":")[1]
-    
-    # Записываем покупку и выдаем достижение
-    result = record_secret_purchase(callback.from_user.id, content_key, SECRET_VIDEO_PRICE)
-    
     await callback.answer()
     
+    # Получаем ссылку на видео
+    video_url = get_bot_setting("secret_video_url") or SECRET_VIDEO_URL
+    
+    # Записываем покупку
+    result = record_secret_purchase(callback.from_user.id, SECRET_VIDEO_KEY, SECRET_VIDEO_PRICE)
+    
     if result["success"]:
-        text = locale.get("buy_secret_success", "✅ Вы успешно приобрели секретный контент: {name}").format(
-            name=locale.get("secret_video_name", "Секретный ролик бубса")
-        )
-        text += "\n\n" + locale.get("secret_content_text", "🔍 Секретный контент: {name}\n\n{content}").format(
-            name=locale.get("secret_video_name", "Секретный ролик бубса"),
-            content=SECRET_VIDEO_URL
-        )
+        text = locale.get("buy_secret_success", "✅ Вы успешно приобрели секретный контент!") + "\n\n"
+        text += SECRET_VIDEO_TEXT + video_url
     else:
         if result["reason"] == "not_enough_coins":
             # Получаем текущий баланс пользователя
             db = SessionLocal()
             user = db.query(User).filter(User.tg_id == callback.from_user.id).first()
-            user_crystals = user.crystals if user else 0
+            user_coins = user.coins if user else 0
             db.close()
             
             text = locale.get("buy_secret_not_enough_coins", "❌ Недостаточно монет. У вас {balance}, но нужно {price}").format(
-                balance=user_crystals,
+                balance=user_coins,
                 price=SECRET_VIDEO_PRICE
             )
         elif result["reason"] == "already_purchased":

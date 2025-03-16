@@ -2,6 +2,7 @@ import json
 import datetime
 from database.session import SessionLocal
 from database.models import User, Announcement, Favorite, Report, Referral
+from utils.helpers import update_user_language
 
 def load_locale(path: str) -> dict:
     with open(path, encoding="utf-8") as f:

@@ -1,8 +1,11 @@
 import json
 import datetime
+import logging
 from datetime import timezone
 from database.session import SessionLocal
 from database.models import User, Announcement, Favorite, Report, Referral
+
+logger = logging.getLogger(__name__)
 
 async def check_channel_subscription(bot, user_id: int, channel_id: str) -> bool:
     """
@@ -57,9 +60,15 @@ def load_locale(path: str) -> dict:
 
 def get_user_language(user_id: int) -> str:
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    session.close()
-    return load_locale('locale/' + f"{user.language if user and user.language else 'ru'}"+'.json')
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        language = user.language if user and user.language else 'ru'
+        return load_locale('locale/' + f"{language}" + '.json')
+    except Exception as e:
+        logger.error(f"Error getting user language: {e}")
+        return load_locale('locale/ru.json')
+    finally:
+        session.close()
 
 
 def get_next_announcement(announcement_type: str, current_user_id: int) -> dict:
@@ -180,12 +189,25 @@ def report_announcement(user_id: int, announcement_id: int, reason: str):
 
 def ensure_user_exists(user_id, username):
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, tg_id=user_id, username=username, crystals=1000, created_at=datetime.datetime.now(timezone.utc))
-        session.add(user)
-        session.commit()
-    session.close()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            user = User(
+                tg_id=user_id,
+                username=username,
+                crystals=1000,
+                created_at=datetime.datetime.now(timezone.utc)
+            )
+            session.add(user)
+            session.commit()
+            return True
+        return True
+    except Exception as e:
+        logger.error(f"Error ensuring user exists: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 
 def get_favorites_list(user_id: int) -> list:
@@ -208,11 +230,19 @@ def remove_favorite(user_id: int, announcement_id: int):
 
 def update_user_language(user_id: int, lang: str):
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if user:
-        user.language = lang
-        session.commit()
-    session.close()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if user:
+            user.language = lang
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error updating user language: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 
 
@@ -245,35 +275,60 @@ def get_announcement_by_id(announcement_id: int) -> dict:
     return None
 
 def is_user_premium(user_id: int) -> bool:
+    """Проверяет, имеет ли пользователь премиум-статус"""
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    session.close()
-    return user.is_premium if user else False
-
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            return False
+        # Проверяем срок действия премиума
+        if user.premium_expiry is not None and user.premium_expiry < datetime.now():
+            user.is_premium = False
+            session.commit()
+            return False
+        return user.is_premium
+    except Exception as e:
+        logger.error(f"Error checking premium status: {e}")
+        return False
+    finally:
+        session.close()
 
 
 def process_premium_purchase(user_id):
+    """Обрабатывает покупку премиум-статуса"""
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if user and user.crystals >= 500:
-        user.crystals -= 500
-        user.is_premium = True
-        session.commit()
-    session.close()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if user and user.crystals >= 500:
+            user.crystals -= 500
+            user.is_premium = True
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error processing premium purchase: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 
 def check_user_crystals(user_id) -> int:
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    session.close()
-    return user.crystals if user else 0
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        return user.crystals if user else 0
+    finally:
+        session.close()
 
 def get_user_crystals(user_id: int) -> int:
     """Получает количество кристаллов пользователя"""
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    session.close()
-    return user.crystals if user else 0
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        return user.crystals if user else 0
+    finally:
+        session.close()
 
 def get_user_coins(user_id: int) -> int:
     """Получает текущий баланс монет пользователя"""
@@ -311,11 +366,19 @@ def update_user_coins(user_id: int, amount: int) -> bool:
 def update_user_crystals(user_id: int, amount: int):
     """Обновляет количество кристаллов пользователя"""
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if user:
-        user.crystals += amount
-        session.commit()
-    session.close()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if user:
+            user.crystals += amount
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error updating user crystals: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 def set_premium_status(user_id: int, expiry_date=None):
     """Устанавливает премиум статус пользователя"""
@@ -336,20 +399,28 @@ def set_premium_status(user_id: int, expiry_date=None):
         session.close()
 
 def process_crystal_transfer(sender_id, receiver_id, amount: int):
+    """Обрабатывает перевод кристаллов между пользователями"""
     session = SessionLocal()
-    sender = session.query(User).filter(User.id == sender_id).first()
-    receiver = session.query(User).filter(User.id == int(receiver_id)).first()
-    if not receiver:
+    try:
+        sender = session.query(User).filter(User.tg_id == sender_id).first()
+        receiver = session.query(User).filter(User.tg_id == int(receiver_id)).first()
+        
+        if not sender or not receiver:
+            return False, "User not found"
+            
+        if sender.crystals < amount:
+            return False, "Insufficient crystals"
+            
+        sender.crystals -= amount
+        receiver.crystals += amount
+        session.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"Error transferring crystals: {e}")
+        session.rollback()
+        return False, str(e)
+    finally:
         session.close()
-        return False, "❌ Адрес не найден"
-    if sender.crystals < amount:
-        session.close()
-        return False, "❌ Недостаточно монет"
-    sender.crystals -= amount
-    receiver.crystals += amount
-    session.commit()
-    session.close()
-    return True, "✅ Перевод успешно выполнен"
 
 def get_announcements_list(announcement_type: str, current_user_id: int) -> list:
     session = SessionLocal()
@@ -691,3 +762,23 @@ def display_announcement_with_keyword(announcement, locale):
     
     # Формируем полный текст
     return f"{premium_label}{keyword_label}{time_label}{announcement['description']}"
+
+def update_user_premium(user_id: int, expiry_date) -> bool:
+    """Обновляет премиум статус пользователя"""
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.tg_id == user_id).first()
+        if not user:
+            logger.error(f"Пользователь с ID {user_id} не найден")
+            return False
+        
+        user.is_premium = True
+        user.premium_expiry = expiry_date
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при выдаче премиума: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()

@@ -1,6 +1,6 @@
 import datetime
 from sqlalchemy import select, update, desc, or_, func
-from database.models import User, PremiumPrice, Sponsor, UserSponsorSubscription, PromoCode, PromoUse
+from database.models import User, PremiumPrice, Sponsor, UserSponsorSubscription, PromoCode, PromoUse, BotSettings
 from database.session import SessionLocal
 import logging
 
@@ -96,14 +96,21 @@ def update_premium_price(duration_days: int, new_price: float):
             price.updated_at = datetime.datetime.now()
         else:
             # Создаем новую запись
-            new_price_record = PremiumPrice(
+            price = PremiumPrice(
                 duration_days=duration_days,
-                price=new_price
+                price=new_price,
+                created_at=datetime.datetime.now(),
+                updated_at=datetime.datetime.now()
             )
-            session.add(new_price_record)
+            session.add(price)
         
         session.commit()
-        return True
+        session.refresh(price)  # Обновляем объект после коммита
+        return price
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении цены: {str(e)}")
+        session.rollback()
+        return None
     finally:
         session.close()
 
@@ -670,6 +677,34 @@ def update_user_coins(tg_id: int, amount: int) -> bool:
     except Exception as e:
         session.rollback()
         print(f"Error updating user coins: {e}")
+        return False
+    finally:
+        session.close()
+
+def get_bot_setting(key: str) -> str:
+    """Получить значение настройки бота"""
+    session = SessionLocal()
+    try:
+        setting = session.query(BotSettings).filter(BotSettings.key == key).first()
+        return setting.value if setting else None
+    finally:
+        session.close()
+
+def set_bot_setting(key: str, value: str) -> bool:
+    """Установить значение настройки бота"""
+    session = SessionLocal()
+    try:
+        setting = session.query(BotSettings).filter(BotSettings.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            setting = BotSettings(key=key, value=value)
+            session.add(setting)
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error setting bot setting: {e}")
+        session.rollback()
         return False
     finally:
         session.close() 

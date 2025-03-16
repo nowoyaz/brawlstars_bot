@@ -1,10 +1,21 @@
 from aiogram import types
-from aiogram.dispatcher import Dispatcher, FSMContext
+from aiogram.dispatcher import FSMContext, Dispatcher
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from config import ADMIN_IDS
-from keyboards.inline_keyboard import admin_panel_keyboard, admin_premium_duration_keyboard, admin_premium_keyboard, admin_sponsors_keyboard, admin_sponsor_item_keyboard, admin_sponsor_confirm_delete_keyboard, admin_keyboard, back_to_admin_keyboard
-from database.crud import update_user_premium, get_premium_prices, update_premium_price, get_sponsors, add_sponsor, update_sponsor, delete_sponsor, add_promo_code, get_promo_codes, delete_promo_code, deactivate_promo_code, get_user_by_tg_id, update_user_coins, update_promo_code
-from utils.helpers import get_user_language
+from config import ADMIN_IDS, ADMIN_ID
+from keyboards.inline_keyboard import (
+    admin_panel_keyboard, admin_premium_duration_keyboard,
+    admin_premium_keyboard, admin_sponsors_keyboard,
+    admin_sponsor_item_keyboard, admin_sponsor_confirm_delete_keyboard,
+    admin_keyboard, back_to_admin_keyboard
+)
+from database.crud import (
+    update_premium_price, get_sponsors, add_sponsor,
+    update_sponsor, delete_sponsor, add_promo_code,
+    get_promo_codes, delete_promo_code, deactivate_promo_code,
+    get_user_by_tg_id, update_user_coins, update_promo_code,
+    get_bot_setting, set_bot_setting
+)
+from utils.helpers import get_user_language, ensure_user_exists, update_user_premium
 import datetime
 import logging
 from aiogram.utils.exceptions import MessageNotModified
@@ -14,6 +25,7 @@ logger = logging.getLogger(__name__)
 class AdminStates(StatesGroup):
     waiting_for_user_id = State()
     waiting_for_duration = State()
+    waiting_for_premium_duration = State()
     waiting_for_price = State()
     
     # Состояния для спонсоров
@@ -28,6 +40,7 @@ class AdminStates(StatesGroup):
     waiting_for_promo_duration = State()
     waiting_for_promo_uses = State()
     waiting_for_promo_expiry = State()
+    waiting_for_video_url = State()
 
 class AdminGiveCrystalsStates(StatesGroup):
     waiting_for_user_id = State()
@@ -132,82 +145,105 @@ async def process_give_premium(callback: types.CallbackQuery, state: FSMContext,
 
 async def process_user_id_input(message: types.Message, state: FSMContext, locale):
     if message.from_user.id not in ADMIN_IDS:
-        return
-    
-    user_locale = get_user_language(message.from_user.id)
-    
-    if not message.text.isdigit():
-        # Создаем клавиатуру с кнопкой отмены
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="back_to_admin"))
-        
-        await message.answer(
-            user_locale.get("invalid_user_id", "❌ Пожалуйста, введите корректный ID пользователя (только цифры)"),
-            reply_markup=kb
-        )
-        return
-    
-    await state.update_data(user_id=int(message.text))
-    
-    # Добавляем кнопку отмены к клавиатуре с длительностями
-    kb = admin_premium_duration_keyboard(user_locale)
-    kb.add(types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="back_to_admin"))
-    
-    await message.answer(
-        user_locale.get("select_premium_duration", "Выберите длительность премиума:"),
-        reply_markup=kb
-    )
-    await AdminStates.waiting_for_duration.set()
-
-async def process_premium_duration(callback: types.CallbackQuery, state: FSMContext, locale):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        await message.answer("У вас нет доступа к этой команде.")
         return
 
-    user_locale = get_user_language(callback.from_user.id)
-    duration_mapping = {
-        "premium_1month": 30,
-        "premium_6months": 180,
-        "premium_1year": 365,
-        "premium_forever": 36500  # 100 лет
-    }
-    
-    duration_days = duration_mapping.get(callback.data)
-    if not duration_days:
-        await callback.answer(user_locale.get("invalid_duration", "❌ Неверная длительность"), show_alert=True)
-        return
-
-    data = await state.get_data()
-    user_id = data.get('user_id')
-    
-    if not user_id:
-        await callback.answer(user_locale.get("user_id_not_found", "❌ Ошибка: ID пользователя не найден"), show_alert=True)
-        return
-
-    # Устанавливаем дату окончания премиума
-    end_date = datetime.datetime.now() + datetime.timedelta(days=duration_days)
-    
     try:
-        update_user_premium(user_id, end_date)
-        await callback.answer(user_locale.get("premium_success", "✅ Премиум успешно выдан!"), show_alert=True)
+        target_user_id = int(message.text)
+        user_locale = get_user_language(message.from_user.id)
         
-        # Создаем клавиатуру с кнопкой "Назад"
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(text=user_locale.get("back_to_admin_panel", "🔙 Назад в админ-панель"), callback_data="back_to_admin"))
-        
-        await callback.message.edit_text(
-            user_locale.get("premium_given", "✅ Премиум выдан пользователю {user_id}\nДлительность: {days} дней\nДата окончания: {date}").format(
-                user_id=user_id,
-                days=duration_days,
-                date=end_date.strftime('%d.%m.%Y')
-            ),
-            reply_markup=kb
+        # Проверяем существование пользователя
+        user = get_user_by_tg_id(target_user_id)
+        if not user:
+            # Если пользователь не существует, создаем его
+            username = str(target_user_id)  # Используем ID как username
+            ensure_user_exists(target_user_id, username)
+            user = get_user_by_tg_id(target_user_id)
+            
+            if not user:
+                await message.answer(
+                    "Не удалось создать пользователя с указанным ID.",
+                    reply_markup=back_to_admin_keyboard(user_locale)
+                )
+                await state.finish()
+                return
+
+        await state.update_data(user_id=target_user_id)
+        await message.answer(
+            "Выберите длительность премиума:",
+            reply_markup=admin_premium_duration_keyboard(user_locale)
+        )
+        await AdminStates.waiting_for_premium_duration.set()
+    except ValueError:
+        await message.answer(
+            "Пожалуйста, введите корректный ID пользователя (только цифры).",
+            reply_markup=back_to_admin_keyboard(user_locale)
         )
     except Exception as e:
-        logger.error(f"Ошибка при выдаче премиума: {str(e)}")
-        await callback.answer(user_locale.get("premium_error", "❌ Ошибка при выдаче премиума"), show_alert=True)
-    
-    await state.finish()
+        logger.error(f"Error in process_user_id_input: {e}")
+        await message.answer(
+            "Произошла ошибка при обработке ID пользователя.",
+            reply_markup=back_to_admin_keyboard(user_locale)
+        )
+        await state.finish()
+
+async def process_premium_duration(callback: types.CallbackQuery, state: FSMContext):
+    """Обработчик выбора длительности премиума"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("У вас нет доступа к этой команде.")
+        return
+
+    try:
+        # Получаем ID пользователя из состояния
+        data = await state.get_data()
+        user_id = data.get('user_id')
+        user_locale = get_user_language(callback.from_user.id)
+        
+        if not user_id:
+            await callback.answer("Ошибка: ID пользователя не найден", show_alert=True)
+            await state.finish()
+            return
+        
+        # Получаем количество дней из callback_data
+        days = int(callback.data.split(':')[1])
+        
+        # Вычисляем дату окончания премиума
+        end_date = datetime.datetime.now() + datetime.timedelta(days=days)
+        
+        # Обновляем премиум статус пользователя
+        success = update_user_premium(user_id, end_date)
+        
+        if success:
+            # Форматируем сообщение в зависимости от длительности
+            if days == 36500:
+                duration_text = "навсегда"
+            elif days == 365:
+                duration_text = "1 год"
+            elif days == 180:
+                duration_text = "6 месяцев"
+            else:
+                duration_text = "1 месяц"
+            
+            await callback.message.edit_text(
+                f"✅ Премиум успешно выдан!\n"
+                f"ID пользователя: {user_id}\n"
+                f"Длительность: {duration_text}\n"
+                f"Дата окончания: {end_date.strftime('%d.%m.%Y %H:%M') if days != 36500 else 'Бессрочно'}",
+                reply_markup=back_to_admin_keyboard(user_locale)
+            )
+        else:
+            await callback.message.edit_text(
+                "❌ Не удалось обновить премиум статус пользователя.",
+                reply_markup=back_to_admin_keyboard(user_locale)
+            )
+    except Exception as e:
+        logger.error(f"Error in process_premium_duration: {e}")
+        await callback.message.edit_text(
+            "Произошла ошибка при выдаче премиума.",
+            reply_markup=back_to_admin_keyboard(user_locale)
+        )
+    finally:
+        await state.finish()
 
 async def process_back_to_admin(callback: types.CallbackQuery, state: FSMContext, locale):
     if callback.from_user.id not in ADMIN_IDS:
@@ -424,21 +460,54 @@ async def process_price_input(message: types.Message, state: FSMContext, locale)
     
     try:
         # Обновляем цену
-        update_premium_price(duration_days, new_price)
+        price = update_premium_price(duration_days, new_price)
+        if price is None:
+            raise Exception("Failed to update price")
+            
         await message.answer(user_locale.get("admin_price_updated", "✅ Цена успешно обновлена"))
         
-        # Возвращаемся к управлению ценами
-        await process_admin_prices(
-            types.CallbackQuery(
-                id="temp",
-                from_user=message.from_user,
-                chat_instance="temp",
-                message=message,
-                data="premium_prices"
+        # Получаем обновленные цены и отображаем их
+        prices = get_premium_prices()
+        text = "💵 Управление ценами\n\n"
+        text += "Текущие цены:\n"
+        
+        duration_mapping = {
+            30: "Месяц",
+            180: "Полгода",
+            365: "Год",
+            36500: "Навсегда"
+        }
+        
+        for price_obj in prices:
+            duration_name = duration_mapping.get(price_obj.duration_days, f"{price_obj.duration_days} дней")
+            text += f"• {duration_name}: {price_obj.price}₽\n"
+        
+        # Создаем клавиатуру для управления ценами
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton(
+                text=f"💰 Месяц ({prices[0].price}₽)", 
+                callback_data="change_price:month"
             ),
-            state,
-            locale
+            types.InlineKeyboardButton(
+                text=f"💰 Полгода ({prices[1].price}₽)", 
+                callback_data="change_price:half_year"
+            ),
+            types.InlineKeyboardButton(
+                text=f"💰 Год ({prices[2].price}₽)", 
+                callback_data="change_price:year"
+            ),
+            types.InlineKeyboardButton(
+                text=f"💰 Навсегда ({prices[3].price}₽)", 
+                callback_data="change_price:forever"
+            )
         )
+        kb.add(types.InlineKeyboardButton(
+            text=user_locale.get("back_to_admin_panel", "🔙 Назад в админ-панель"),
+            callback_data="back_to_admin"
+        ))
+        
+        await message.answer(text, reply_markup=kb)
         
     except Exception as e:
         logger.error(f"Ошибка при обновлении цены: {str(e)}")
@@ -1113,7 +1182,7 @@ async def process_custom_duration_input(message: types.Message, state: FSMContex
     
     # Сохраняем срок действия в состоянии
     await state.update_data(promo_duration=int(message.text))
-    
+
     # Запрашиваем количество использований
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -1254,6 +1323,58 @@ async def process_give_price(callback: types.CallbackQuery, state: FSMContext, l
             reply_markup=kb
         )
 
+async def process_admin_secret_video(callback: types.CallbackQuery, locale, state: FSMContext):
+    """Обработчик для изменения секретного ролика"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+    
+    await callback.answer()
+    current_url = get_bot_setting("secret_video_url") or "Не установлено"
+    
+    # Создаем клавиатуру с кнопкой отмены
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(
+            text=locale.get("button_cancel", "🔙 Отмена"),
+            callback_data="back_to_admin"
+        )
+    )
+    
+    # Отправляем новое сообщение вместо редактирования
+    await callback.message.answer(
+        f"🎬 Текущая ссылка: {current_url}\n\n" + locale["admin_enter_video_url"],
+        reply_markup=kb
+    )
+    await AdminStates.waiting_for_video_url.set()
+
+async def process_video_url_input(message: types.Message, locale, state: FSMContext):
+    """Обработчик для ввода новой ссылки на ролик"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    if message.text.lower() in ["отмена", "cancel", "/cancel"]:
+        await state.finish()
+        await message.answer(
+            locale.get("admin_panel_text", "👨‍💻 Админ-панель"),
+            reply_markup=admin_panel_keyboard(locale)
+        )
+        return
+    
+    # Сохраняем новую ссылку
+    if set_bot_setting("secret_video_url", message.text):
+        await message.answer(
+            locale["admin_video_updated"],
+            reply_markup=admin_panel_keyboard(locale)
+        )
+    else:
+        await message.answer(
+            locale["admin_video_error"].format(error="Database error"),
+            reply_markup=admin_panel_keyboard(locale)
+        )
+    
+    await state.finish()
+
 def register_handlers_admin(dp: Dispatcher, locale):
     """Регистрирует обработчики админки"""
     dp.register_message_handler(lambda message: cmd_admin_panel(message, locale), commands=["admin", "panel"])
@@ -1284,9 +1405,9 @@ def register_handlers_admin(dp: Dispatcher, locale):
         state=AdminStates.waiting_for_user_id
     )
     dp.register_callback_query_handler(
-        lambda call, state: process_premium_duration(call, state, locale),
-        lambda c: c.data.startswith("premium_"),
-        state=AdminStates.waiting_for_duration
+        lambda call, state: process_premium_duration(call, state),
+        lambda c: c.data.startswith("premium_duration:"),
+        state=AdminStates.waiting_for_premium_duration
     )
     
     # Обработчики для цен
@@ -1427,4 +1548,14 @@ def register_handlers_admin(dp: Dispatcher, locale):
             AdminGiveCrystalsStates.waiting_for_user_id,
             AdminGiveCrystalsStates.waiting_for_amount
         ]
+    )
+
+    # Обработчики для секретного ролика
+    dp.register_callback_query_handler(
+        lambda c: process_admin_secret_video(c, locale, dp.current_state()),
+        lambda c: c.data == "admin_secret_video"
+    )
+    dp.register_message_handler(
+        lambda message: process_video_url_input(message, locale, dp.current_state()),
+        state=AdminStates.waiting_for_video_url
     ) 

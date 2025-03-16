@@ -12,16 +12,19 @@ async def cmd_crystals(callback: types.CallbackQuery, locale):
     # Записываем посещение раздела
     record_section_visit(callback.from_user.id, "crystals")
     
-    # Проверяем достижение "Липрикон"
+    # Проверяем достижение "Лепрекон"
     check_coins_achievement(callback.from_user.id)
     
     # Получаем данные о пользователе
     from database.session import SessionLocal
     from database.models import User
     await callback.answer()
-    coins = get_user_coins(callback.from_user.id)
-    user_id = callback.from_user.id
-    text = locale["crystals_text"].format(crystals=coins, user_id=user_id)
+    session = SessionLocal()
+    user = session.query(User).filter(User.tg_id == callback.from_user.id).first()
+    coins = user.coins if user else 0
+    session.close()
+    
+    text = locale["crystals_text"].format(crystals=coins, user_id=callback.from_user.id)
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton(text=locale["button_back"], callback_data="back_to_main")

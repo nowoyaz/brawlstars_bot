@@ -350,23 +350,33 @@ def admin_panel_keyboard(locale):
         InlineKeyboardButton(text=locale.get("give_premium_button", "💎 Выдать премиум"), callback_data="give_premium"),
         InlineKeyboardButton(text=locale.get("premium_prices_button", "💵 Настройка цен"), callback_data="premium_prices"),
         InlineKeyboardButton(text=locale.get("manage_sponsors_button", "🔗 Управление спонсорами"), callback_data="manage_sponsors"),
-        InlineKeyboardButton(text=locale.get("manage_promo_codes_button", "🎟️ Управление промокодами"), callback_data="manage_promo_codes")
+        InlineKeyboardButton(text=locale.get("manage_promo_codes_button", "🎟️ Управление промокодами"), callback_data="manage_promo_codes"),
+        InlineKeyboardButton(text=locale.get("admin_secret_video", "🎬 Секретный ролик"), callback_data="admin_secret_video")
     )
     
     return kb
 
 def admin_premium_duration_keyboard(locale):
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        InlineKeyboardButton(text="1 месяц", callback_data="premium_1month"),
-        InlineKeyboardButton(text="6 месяцев", callback_data="premium_6months")
-    )
-    kb.add(
-        InlineKeyboardButton(text="1 год", callback_data="premium_1year"),
-        InlineKeyboardButton(text="Навсегда", callback_data="premium_forever")
-    )
-    kb.add(InlineKeyboardButton(text=locale["back_to_admin_panel"], callback_data="back_to_admin"))
-    return kb
+    """Создает клавиатуру для выбора длительности премиума"""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    buttons = [
+        InlineKeyboardButton(locale.get("premium_1m", "1 месяц"), callback_data="premium_duration:30"),
+        InlineKeyboardButton(locale.get("premium_6m", "6 месяцев"), callback_data="premium_duration:180"),
+        InlineKeyboardButton(locale.get("premium_1y", "1 год"), callback_data="premium_duration:365"),
+        InlineKeyboardButton(locale.get("premium_forever", "Навсегда"), callback_data="premium_duration:36500")
+    ]
+    
+    for button in buttons:
+        keyboard.insert(button)
+    
+    # Добавляем кнопку "Назад"
+    keyboard.add(InlineKeyboardButton(
+        locale.get("button_back", "🔙 Назад"),
+        callback_data="back_to_admin"
+    ))
+    
+    return keyboard
 
 # Клавиатуры для спонсоров
 def sponsors_list_keyboard(locale, sponsors, user_id, user_subscriptions):
@@ -591,15 +601,26 @@ def shop_keyboard(locale):
 
 def admin_keyboard(locale):
     """Клавиатура админ-панели"""
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    keyboard.add(
-        InlineKeyboardButton(locale["admin_give_crystals"], callback_data="give_crystals"),
-        InlineKeyboardButton(locale["admin_give_premium"], callback_data="give_premium"),
-        InlineKeyboardButton(locale["admin_manage_prices"], callback_data="manage_prices"),
-        InlineKeyboardButton(locale["admin_manage_sponsors"], callback_data="manage_sponsors"),
-        InlineKeyboardButton(locale["button_back"], callback_data="menu")
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("admin_give_crystals", "💰 Выдать монеты"),
+            callback_data="admin_give_crystals"
+        )
     )
-    return keyboard
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("admin_secret_video", "🎬 Секретный ролик"),
+            callback_data="admin_secret_video"
+        )
+    )
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_back", "🔙 Назад"),
+            callback_data="back_to_menu"
+        )
+    )
+    return kb
 
 def back_to_admin_keyboard(locale):
     """Клавиатура для возврата в админ-панель"""
