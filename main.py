@@ -1,7 +1,7 @@
 import logging
 from aiogram import Bot, Dispatcher, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-
+print(1)
 from config import TOKEN
 from utils.helpers import load_locale
 from middleware.delay_middleware import DelayMiddleware
