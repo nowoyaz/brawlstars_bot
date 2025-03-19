@@ -2,10 +2,8 @@ import json
 import datetime
 import logging
 from datetime import timezone
-from database.session import SessionLocal, AsyncSessionLocal, get_async_session
+from database.session import SessionLocal
 from database.models import User, Announcement, Favorite, Report, Referral
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +58,6 @@ def load_locale(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
-# Добавляем асинхронные версии функций
-async def get_user_language_async(user_id: int) -> str:
-    async for session in get_async_session():
-        try:
-            query = select(User).where(User.tg_id == user_id)
-            result = await session.execute(query)
-            user = result.scalar_one_or_none()
-            language = user.language if user and user.language else 'ru'
-            return load_locale('locale/' + f"{language}" + '.json')
-        except Exception as e:
-            logger.error(f"Error getting user language: {e}")
-            return load_locale('locale/ru.json')
-
-# Оставляем синхронные версии для обратной совместимости
 def get_user_language(user_id: int) -> str:
     session = SessionLocal()
     try:
