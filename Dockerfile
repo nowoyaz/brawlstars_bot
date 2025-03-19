@@ -2,15 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Создаем директории для данных
-RUN mkdir -p /app/data
+# Создаем директории для данных и устанавливаем права
+RUN mkdir -p /app/data && chown -R 32767:32767 /app/data && chmod -R 777 /app/data
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-
-# Устанавливаем права на директории
-RUN chmod -R 777 /app/data
 
 CMD ["python", "main.py"] 
