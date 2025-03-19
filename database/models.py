@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, Enum, Float
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Text, ForeignKey, Enum, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -10,8 +10,8 @@ Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, unique=True, index=True)
-    tg_id = Column(Integer, unique=True, nullable=False)
+    id = Column(BigInteger, primary_key=True, unique=True, index=True)
+    tg_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
@@ -32,8 +32,8 @@ class Referral(Base):
     __tablename__ = 'referrals'
     
     id = Column(Integer, primary_key=True, index=True)
-    referrer_id = Column(Integer, nullable=False)
-    referred_id = Column(Integer, nullable=False, unique=True)  # каждый реферал может быть только один раз
+    referrer_id = Column(BigInteger, nullable=False)
+    referred_id = Column(BigInteger, nullable=False, unique=True)  # каждый реферал может быть только один раз
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -41,7 +41,7 @@ class Referral(Base):
 class Announcement(Base):
     __tablename__ = "announcements"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
     announcement_type = Column(Enum("team", "club", name="announcement_type"), nullable=False)
     image_id = Column(String, nullable=False)
     media_id = Column(String, nullable=True)
@@ -54,7 +54,7 @@ class Announcement(Base):
 class Report(Base):
     __tablename__ = "reports"
     id = Column(Integer, primary_key=True, index=True)
-    reporter_id = Column(Integer, ForeignKey("users.id"))
+    reporter_id = Column(BigInteger, ForeignKey("users.id"))
     announcement_id = Column(Integer, ForeignKey("announcements.id"))
     reason = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -62,7 +62,7 @@ class Report(Base):
 class Favorite(Base):
     __tablename__ = "favorites"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(BigInteger, ForeignKey("users.id"))
     announcement_id = Column(Integer, ForeignKey("announcements.id"))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
