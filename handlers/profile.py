@@ -20,7 +20,8 @@ async def show_profile(callback: types.CallbackQuery, locale):
             tg_id=callback.from_user.id,
             username=callback.from_user.username,
             language='ru',
-            crystals=0
+            crystals=0,
+            coins=0
         )
         session.add(user)
         session.commit()
@@ -38,12 +39,12 @@ async def show_profile(callback: types.CallbackQuery, locale):
 
 📝 ID: {user_id}
 🏆 Достижений: {achievements_count}
-🪙 Монет: {crystals}
+🪙 Монет: {coins}
 📊 Статус: {status}
 📅 Дата регистрации: {reg_date}""").format(
         user_id=user.tg_id,
         achievements_count=achievements_count,
-        crystals=user.crystals,
+        coins=user.coins,
         status=status,
         reg_date=user.created_at.strftime("%d.%m.%Y")
     )

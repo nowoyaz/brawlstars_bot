@@ -627,3 +627,30 @@ def back_to_admin_keyboard(locale):
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(locale["back_to_admin_panel"], callback_data="admin_panel"))
     return keyboard
+
+def shop_premium_keyboard(locale):
+    """Клавиатура для покупки премиум статуса"""
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_premium_forever", "🌟 Навсегда"), callback_data="premium_buy:forever"),
+        InlineKeyboardButton(text=locale.get("button_premium_year", "⭐ На год"), callback_data="premium_buy:year")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_premium_half_year", "✨ На полгода"), callback_data="premium_buy:half_year"),
+        InlineKeyboardButton(text=locale.get("button_premium_month", "💫 На месяц"), callback_data="premium_buy:month")
+    )
+    kb.add(
+        InlineKeyboardButton(text=locale.get("button_back", "🔙 Назад"), callback_data="back_to_shop")
+    )
+    return kb
+
+def back_to_shop_keyboard(locale):
+    """Клавиатура для возврата в магазин"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(
+            text=locale.get("button_back_to_shop", "🔙 Назад в магазин"),
+            callback_data="back_to_shop"
+        )
+    )
+    return kb

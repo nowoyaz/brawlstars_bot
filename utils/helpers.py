@@ -274,15 +274,15 @@ def get_announcement_by_id(announcement_id: int) -> dict:
         }
     return None
 
-def is_user_premium(user_id: int) -> bool:
-    """Проверяет, имеет ли пользователь премиум-статус"""
+async def is_user_premium(user_id: int) -> bool:
+    """Проверяет, является ли пользователь премиум"""
     session = SessionLocal()
     try:
         user = session.query(User).filter(User.tg_id == user_id).first()
         if not user:
             return False
         # Проверяем срок действия премиума
-        if user.premium_expiry is not None and user.premium_expiry < datetime.now():
+        if user.premium_until is not None and user.premium_until < datetime.datetime.now(timezone.utc):
             user.is_premium = False
             session.commit()
             return False
@@ -380,19 +380,22 @@ def update_user_crystals(user_id: int, amount: int):
     finally:
         session.close()
 
-def set_premium_status(user_id: int, expiry_date=None):
-    """Устанавливает премиум статус пользователя"""
+def update_user_premium(user_id: int, expiry_date) -> bool:
+    """Обновляет премиум статус пользователя"""
     session = SessionLocal()
     try:
         user = session.query(User).filter(User.tg_id == user_id).first()
-        if user:
-            user.is_premium = True
-            user.premium_expiry = expiry_date
-            session.commit()
-            return True
-        return False
+        if not user:
+            logger.error(f"Пользователь с ID {user_id} не найден")
+            return False
+        
+        user.is_premium = True
+        user.premium_until = expiry_date
+        user.premium_end_date = expiry_date  # Обновляем оба поля для совместимости
+        session.commit()
+        return True
     except Exception as e:
-        logger.error(f"Error setting premium status: {e}")
+        logger.error(f"Ошибка при выдаче премиума: {e}")
         session.rollback()
         return False
     finally:
@@ -584,7 +587,7 @@ def get_referral_count(user_id: int) -> int:
 
 def can_receive_daily_crystals(user_id: int) -> bool:
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
+    user = session.query(User).filter(User.tg_id == user_id).first()
     if not user:
         session.close()
         return False
@@ -603,7 +606,7 @@ def can_receive_daily_crystals(user_id: int) -> bool:
 
 def give_daily_crystals(user_id: int) -> tuple[bool, int]:
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
+    user = session.query(User).filter(User.tg_id == user_id).first()
     if not user:
         session.close()
         return False, 0
@@ -762,23 +765,3 @@ def display_announcement_with_keyword(announcement, locale):
     
     # Формируем полный текст
     return f"{premium_label}{keyword_label}{time_label}{announcement['description']}"
-
-def update_user_premium(user_id: int, expiry_date) -> bool:
-    """Обновляет премиум статус пользователя"""
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(User.tg_id == user_id).first()
-        if not user:
-            logger.error(f"Пользователь с ID {user_id} не найден")
-            return False
-        
-        user.is_premium = True
-        user.premium_expiry = expiry_date
-        session.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при выдаче премиума: {e}")
-        session.rollback()
-        return False
-    finally:
-        session.close()

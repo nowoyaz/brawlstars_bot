@@ -13,10 +13,11 @@ from database.crud import (
     update_sponsor, delete_sponsor, add_promo_code,
     get_promo_codes, delete_promo_code, deactivate_promo_code,
     get_user_by_tg_id, update_user_coins, update_promo_code,
-    get_bot_setting, set_bot_setting
+    get_bot_setting, set_bot_setting, get_premium_prices
 )
 from utils.helpers import get_user_language, ensure_user_exists, update_user_premium
 import datetime
+from datetime import timezone
 import logging
 from aiogram.utils.exceptions import MessageNotModified
 
@@ -207,8 +208,8 @@ async def process_premium_duration(callback: types.CallbackQuery, state: FSMCont
         # Получаем количество дней из callback_data
         days = int(callback.data.split(':')[1])
         
-        # Вычисляем дату окончания премиума
-        end_date = datetime.datetime.now() + datetime.timedelta(days=days)
+        # Вычисляем дату окончания премиума с использованием UTC
+        end_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
         
         # Обновляем премиум статус пользователя
         success = update_user_premium(user_id, end_date)
@@ -224,12 +225,19 @@ async def process_premium_duration(callback: types.CallbackQuery, state: FSMCont
             else:
                 duration_text = "1 месяц"
             
+            # Создаем клавиатуру для возврата в админ-панель
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton(
+                text=user_locale.get("back_to_admin_panel", "🔙 Назад в админ-панель"),
+                callback_data="admin_panel"
+            ))
+            
             await callback.message.edit_text(
                 f"✅ Премиум успешно выдан!\n"
                 f"ID пользователя: {user_id}\n"
                 f"Длительность: {duration_text}\n"
                 f"Дата окончания: {end_date.strftime('%d.%m.%Y %H:%M') if days != 36500 else 'Бессрочно'}",
-                reply_markup=back_to_admin_keyboard(user_locale)
+                reply_markup=kb
             )
         else:
             await callback.message.edit_text(
@@ -255,24 +263,27 @@ async def process_back_to_admin(callback: types.CallbackQuery, state: FSMContext
     await callback.answer()
     
     try:
-        if callback.data == "back_to_admin":
-            text = user_locale.get("admin_panel_text", "👑 Админ-панель\n\nВыберите действие:")
-            await callback.message.edit_text(text, reply_markup=admin_panel_keyboard(user_locale))
-        elif callback.data == "manage_promo_codes":
-            # Удаляем текущее сообщение и отправляем новое для избежания ошибки MessageNotModified
-            await callback.message.delete()
+        text = user_locale.get("admin_panel_text", "👑 Админ-панель\n\nВыберите действие:")
+        
+        if callback.data == "manage_promo_codes":
             await process_manage_promo_codes(callback, state, locale)
         elif callback.data == "manage_sponsors":
-            # Удаляем текущее сообщение и отправляем новое для избежания ошибки MessageNotModified
-            await callback.message.delete()
             await process_manage_sponsors(callback, state, locale)
-    except MessageNotModified:
-        await callback.answer(user_locale.get("no_changes", "Изменений нет"), show_alert=True)
+        else:  # back_to_admin или admin_panel
+            try:
+                await callback.message.edit_text(text, reply_markup=admin_panel_keyboard(user_locale))
+            except MessageNotModified:
+                await callback.answer(user_locale.get("no_changes", "Изменений нет"), show_alert=True)
+            except Exception:
+                # Если не удалось отредактировать сообщение, отправляем новое
+                await callback.message.answer(text, reply_markup=admin_panel_keyboard(user_locale))
     except Exception as e:
         logger.error(f"Ошибка при возврате в админ-панель: {str(e)}")
         # Создаем новое сообщение в случае ошибки
-        text = user_locale.get("admin_panel_text", "👑 Админ-панель\n\nВыберите действие:")
-        await callback.message.answer(text, reply_markup=admin_panel_keyboard(user_locale))
+        await callback.message.answer(
+            user_locale.get("admin_panel_text", "👑 Админ-панель\n\nВыберите действие:"),
+            reply_markup=admin_panel_keyboard(user_locale)
+        )
 
 async def process_admin_prices(callback: types.CallbackQuery, state: FSMContext, locale):
     """Обработчик для управления ценами премиума"""
@@ -1026,7 +1037,7 @@ async def process_promo_expiry_selection(callback: types.CallbackQuery, state: F
         
         if expiry_str != "none":
             days = int(expiry_str)
-            expiry_date = datetime.datetime.now() + datetime.timedelta(days=days)
+            expiry_date = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=days)
         
         # Создаем промокод
         promo = add_promo_code(promo_code, promo_duration, promo_uses, expiry_date)
@@ -1379,6 +1390,13 @@ def register_handlers_admin(dp: Dispatcher, locale):
     """Регистрирует обработчики админки"""
     dp.register_message_handler(lambda message: cmd_admin_panel(message, locale), commands=["admin", "panel"])
     
+    # Добавляем обработчик для callback_data "admin_panel"
+    dp.register_callback_query_handler(
+        lambda call, state: process_back_to_admin(call, state, locale),
+        lambda c: c.data in ["back_to_admin", "admin_panel", "manage_promo_codes", "manage_sponsors"],
+        state="*"
+    )
+    
     # Обработчики для выдачи монет
     dp.register_callback_query_handler(
         lambda call, state: process_give_crystals(call, state, locale),
@@ -1519,13 +1537,6 @@ def register_handlers_admin(dp: Dispatcher, locale):
     dp.register_callback_query_handler(
         lambda call, state: process_give_price(call, state, locale),
         lambda c: c.data == "give_price",
-        state="*"
-    )
-    
-    # Обработчик для кнопки "Назад"
-    dp.register_callback_query_handler(
-        lambda call, state: process_back_to_admin(call, state, locale),
-        lambda c: c.data == "back_to_admin" or c.data == "manage_promo_codes" or c.data == "manage_sponsors",
         state="*"
     )
     

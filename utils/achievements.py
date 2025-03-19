@@ -2,7 +2,7 @@ from typing import List, Dict
 from database.models import User
 from database.session import SessionLocal
 from database.achievements import award_achievement, ACHIEVEMENT_LEGEND
-from utils.helpers import set_premium_status
+from utils.helpers import update_user_premium
 
 ACHIEVEMENTS = {
     "major": {
