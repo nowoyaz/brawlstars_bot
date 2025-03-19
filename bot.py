@@ -17,6 +17,8 @@ from handlers.shop import register_handlers_shop
 from handlers.profile import register_profile_handlers
 from utils.localization import get_locale
 
+print(1)
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
