@@ -6,7 +6,7 @@ from database.session import SessionLocal
 from database.models import User
 from keyboards.inline_keyboard import inline_main_menu_keyboard, gift_keyboard
 from utils.helpers import get_user_language, check_channel_subscription, is_user_premium, check_all_sponsor_subscriptions, record_section_visit, check_gift_achievement
-from database.crud import get_sponsors, check_user_subscription, get_user_by_id, update_user_last_gift, add_user_crystals, add_coins_to_user
+from database.crud import get_sponsors, check_user_subscription, get_user_by_id, update_user_last_gift, add_user_crystals, add_coins_to_user, add_user_subscription
 
 async def cmd_gift(callback: types.CallbackQuery, locale):
     """Обработчик для кнопки 'Подарок'"""
@@ -30,20 +30,28 @@ async def process_receive_gift(callback: types.CallbackQuery, locale):
     
     # Проверяем подписку на спонсоров или наличие премиум-статуса
     is_premium = is_user_premium(callback.from_user.id)
-    has_all_subscriptions = check_all_sponsor_subscriptions(callback.from_user.id)
     
-    if not is_premium and not has_all_subscriptions:
-        # Получаем список активных спонсоров
-        sponsors = get_sponsors(is_active_only=True)
-        if sponsors:
-            # Создаем клавиатуру со списком спонсоров
-            kb = types.InlineKeyboardMarkup(row_width=1)
-            for sponsor in sponsors:
-                if not check_user_subscription(callback.from_user.id, sponsor.id):
+    # Получаем список активных спонсоров
+    sponsors = get_sponsors(is_active_only=True)
+    if not is_premium and sponsors:
+        # Проверяем реальные подписки на каналы
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        has_all_subscriptions = True
+        
+        for sponsor in sponsors:
+            if sponsor.channel_id:
+                is_subscribed = await check_channel_subscription(callback.bot, callback.from_user.id, sponsor.channel_id)
+                if is_subscribed:
+                    # Если пользователь подписан, добавляем запись в базу
+                    add_user_subscription(callback.from_user.id, sponsor.id)
+                else:
+                    has_all_subscriptions = False
                     kb.add(types.InlineKeyboardButton(
                         text=f"👉 Подписаться на {sponsor.name}",
                         url=sponsor.link
                     ))
+        
+        if not has_all_subscriptions:
             kb.add(types.InlineKeyboardButton(
                 text=locale.get("check_subscriptions", "🔄 Проверить подписки"),
                 callback_data="receive_gift"

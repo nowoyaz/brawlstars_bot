@@ -28,17 +28,18 @@ async def check_channel_subscription(bot, user_id: int, channel_id: str) -> bool
         print(f"Ошибка при проверке подписки: {str(e)}")
         return False  # В случае ошибки считаем, что пользователь не подписан
 
-def check_all_sponsor_subscriptions(user_id: int) -> bool:
+async def check_all_sponsor_subscriptions(user_id: int, bot) -> bool:
     """
     Проверяет подписку пользователя на всех активных спонсоров
     
     Args:
         user_id: ID пользователя
+        bot: Объект бота для проверки подписок
     
     Returns:
         bool: True, если пользователь подписан на всех спонсоров, иначе False
     """
-    from database.crud import get_sponsors, check_user_subscription
+    from database.crud import get_sponsors
     
     # Получаем всех активных спонсоров
     sponsors = get_sponsors(is_active_only=True)
@@ -49,8 +50,11 @@ def check_all_sponsor_subscriptions(user_id: int) -> bool:
     
     # Проверяем подписку на каждого спонсора
     for sponsor in sponsors:
-        if not check_user_subscription(user_id, sponsor.id):
-            return False
+        # Проверяем только реальную подписку через Telegram API
+        if sponsor.channel_id:
+            is_subscribed = await check_channel_subscription(bot, user_id, sponsor.channel_id)
+            if not is_subscribed:
+                return False
     
     return True
 
