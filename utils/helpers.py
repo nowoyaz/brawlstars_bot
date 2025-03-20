@@ -20,12 +20,17 @@ async def check_channel_subscription(bot, user_id: int, channel_id: str) -> bool
         bool: True, если пользователь подписан, иначе False
     """
     try:
+        logger.info(f"Проверка подписки пользователя {user_id} на канал {channel_id}")
         # Попытка получить информацию о подписке пользователя
         member = await bot.get_chat_member(channel_id, user_id)
+        logger.info(f"Статус подписки пользователя {user_id} на канал {channel_id}: {member.status}")
+        
         # Проверяем, что пользователь не исключен из канала (left, kicked, banned)
-        return member.status not in ['left', 'kicked', 'banned']
+        is_subscribed = member.status not in ['left', 'kicked', 'banned']
+        logger.info(f"Результат проверки подписки: {is_subscribed}")
+        return is_subscribed
     except Exception as e:
-        print(f"Ошибка при проверке подписки: {str(e)}")
+        logger.error(f"Ошибка при проверке подписки пользователя {user_id} на канал {channel_id}: {str(e)}")
         return False  # В случае ошибки считаем, что пользователь не подписан
 
 async def check_all_sponsor_subscriptions(user_id: int, bot) -> bool:
@@ -200,6 +205,7 @@ def ensure_user_exists(user_id, username):
                 tg_id=user_id,
                 username=username,
                 crystals=1000,
+                is_premium=False,  # Явно указываем, что пользователь не премиум
                 created_at=datetime.datetime.now(timezone.utc)
             )
             session.add(user)
@@ -278,18 +284,20 @@ def get_announcement_by_id(announcement_id: int) -> dict:
         }
     return None
 
-async def is_user_premium(user_id: int) -> bool:
+def is_user_premium(user_id: int) -> bool:
     """Проверяет, является ли пользователь премиум"""
     session = SessionLocal()
     try:
         user = session.query(User).filter(User.tg_id == user_id).first()
         if not user:
             return False
+            
         # Проверяем срок действия премиума
         if user.premium_until is not None and user.premium_until < datetime.datetime.now(timezone.utc):
             user.is_premium = False
             session.commit()
             return False
+            
         return user.is_premium
     except Exception as e:
         logger.error(f"Error checking premium status: {e}")
@@ -306,6 +314,9 @@ def process_premium_purchase(user_id):
         if user and user.crystals >= 500:
             user.crystals -= 500
             user.is_premium = True
+            # Устанавливаем срок действия премиума (30 дней)
+            user.premium_until = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=30)
+            user.premium_end_date = user.premium_until
             session.commit()
             return True
         return False
