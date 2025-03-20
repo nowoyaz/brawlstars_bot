@@ -33,10 +33,30 @@ async def process_receive_gift(callback: types.CallbackQuery, locale):
     has_all_subscriptions = check_all_sponsor_subscriptions(callback.from_user.id)
     
     if not is_premium and not has_all_subscriptions:
-        text = locale["gift_sponsors_required"]
-        await callback.message.edit_text(text, reply_markup=inline_main_menu_keyboard(locale))
-        session.close()
-        return
+        # Получаем список активных спонсоров
+        sponsors = get_sponsors(is_active_only=True)
+        if sponsors:
+            # Создаем клавиатуру со списком спонсоров
+            kb = types.InlineKeyboardMarkup(row_width=1)
+            for sponsor in sponsors:
+                if not check_user_subscription(callback.from_user.id, sponsor.id):
+                    kb.add(types.InlineKeyboardButton(
+                        text=f"👉 Подписаться на {sponsor.name}",
+                        url=sponsor.link
+                    ))
+            kb.add(types.InlineKeyboardButton(
+                text=locale.get("check_subscriptions", "🔄 Проверить подписки"),
+                callback_data="receive_gift"
+            ))
+            kb.add(types.InlineKeyboardButton(
+                text=locale.get("back_to_menu", "◀️ В меню"),
+                callback_data="back_to_main"
+            ))
+            
+            text = locale["gift_sponsors_required"]
+            await callback.message.edit_text(text, reply_markup=kb)
+            session.close()
+            return
     
     # Проверяем, получал ли пользователь подарок сегодня
     today = datetime.datetime.now().date()
