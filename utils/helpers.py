@@ -44,8 +44,8 @@ def check_all_sponsor_subscriptions(user_id: int) -> bool:
     sponsors = get_sponsors(is_active_only=True)
     
     if not sponsors:
-        # Если нет активных спонсоров, считаем, что пользователь подписан на всех
-        return True
+        # Если нет активных спонсоров, считаем, что пользователь НЕ подписан
+        return False
     
     # Проверяем подписку на каждого спонсора
     for sponsor in sponsors:

@@ -1029,59 +1029,50 @@ async def process_promo_expiry_selection(callback: types.CallbackQuery, state: F
         promo_uses = data.get("promo_uses")
         
         if not all([promo_code, promo_duration, promo_uses]):
-            raise ValueError("Отсутствуют необходимые данные для создания промокода")
+            await callback.message.edit_text(
+                user_locale.get("error_missing_data", "❌ Ошибка: не все данные были введены"),
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+                )
+            )
+            return
         
-        # Получаем выбранный срок действия промокода
+        # Получаем срок действия промокода
         expiry_str = callback.data.split(":")[1]
-        expiry_date = None
         
-        if expiry_str != "none":
-            days = int(expiry_str)
-            expiry_date = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=days)
+        if expiry_str == "none":
+            expiry_date = None
+        else:
+            expiry_date = datetime.datetime.now(timezone.utc) + datetime.timedelta(days=int(expiry_str))
         
         # Создаем промокод
         promo = add_promo_code(promo_code, promo_duration, promo_uses, expiry_date)
         
-        # Формируем клавиатуру для возврата
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(
-            text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"),
-            callback_data="manage_promo_codes"
-        ))
-        
         if promo:
-            # Формируем текст успешного создания
-            expiry_text = user_locale.get("promo_no_expiry", "бессрочно") if not expiry_date else expiry_date.strftime("%d.%m.%Y")
-            success_text = [
-                user_locale.get("admin_promo_created", "✅ Промокод успешно создан:"),
-                f"\n\n<code>{promo_code}</code>\n",
-                user_locale.get("admin_promo_details", "Детали:"),
-                f"• {user_locale.get('admin_promo_duration', 'Срок действия премиума')}: {promo_duration} дней",
-                f"• {user_locale.get('admin_promo_uses', 'Лимит использований')}: {promo_uses}",
-                f"• {user_locale.get('admin_promo_expiry', 'Срок действия промокода')}: {expiry_text}"
-            ]
             await callback.message.edit_text(
-                "\n".join(success_text),
-                reply_markup=kb,
-                parse_mode="HTML"
+                user_locale.get("promo_code_created", "✅ Промокод успешно создан!"),
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(text=user_locale.get("back_to_admin_panel", "🔙 Назад в админ-панель"), callback_data="back_to_admin")
+                )
             )
         else:
             await callback.message.edit_text(
-                user_locale.get("admin_promo_error", "❌ Ошибка при создании промокода. Возможно, такой промокод уже существует."),
-                reply_markup=kb
+                user_locale.get("error_creating_promo", "❌ Ошибка при создании промокода"),
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+                )
             )
+        
+        await state.finish()
+        
     except Exception as e:
         logger.error(f"Ошибка при создании промокода: {str(e)}")
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton(
-            text=user_locale.get("back_to_promo_management", "🔙 К управлению промокодами"),
-            callback_data="manage_promo_codes"
-        ))
         await callback.message.edit_text(
-            user_locale.get("admin_promo_error", "❌ Ошибка при создании промокода: ") + str(e),
-            reply_markup=kb
+            user_locale.get("error_creating_promo", "❌ Ошибка при создании промокода"),
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton(text=user_locale.get("button_cancel", "🔙 Отмена"), callback_data="manage_promo_codes")
+            )
         )
-    finally:
         await state.finish()
 
 async def process_delete_promo(callback: types.CallbackQuery, state: FSMContext, locale):
