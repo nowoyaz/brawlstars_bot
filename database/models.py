@@ -150,7 +150,7 @@ class PromoUse(Base):
     __tablename__ = "promo_uses"
     id = Column(Integer, primary_key=True, index=True)
     promo_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_tg_id = Column(Integer, nullable=False)  # Используем tg_id вместо ссылки на users.id
     used_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Achievement(Base):

@@ -436,7 +436,7 @@ def use_promo_code(user_id: int, code: str):
     Использует промокод пользователем
     
     Args:
-        user_id (int): ID пользователя
+        user_id (int): Telegram ID пользователя
         code (str): Код промокода
     
     Returns:
@@ -471,14 +471,14 @@ def use_promo_code(user_id: int, code: str):
         # Проверяем, не использовал ли пользователь уже этот промокод
         existing_use = session.query(PromoUse).filter(
             PromoUse.promo_id == promo.id,
-            PromoUse.user_id == user_id
+            PromoUse.user_tg_id == user_id
         ).first()
         if existing_use:
             session.close()
             return False, "Вы уже использовали этот промокод", None
         
         # Используем промокод
-        promo_use = PromoUse(promo_id=promo.id, user_id=user_id)
+        promo_use = PromoUse(promo_id=promo.id, user_tg_id=user_id)
         session.add(promo_use)
         
         # Увеличиваем счетчик использований
@@ -489,7 +489,7 @@ def use_promo_code(user_id: int, code: str):
             promo.is_active = False
         
         # Применяем премиум-статус пользователю
-        user = session.query(User).filter(User.id == user_id).first()
+        user = session.query(User).filter(User.tg_id == user_id).first()
         if not user:
             session.rollback()
             session.close()

@@ -11,7 +11,6 @@ import datetime
 from database.models import User
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext
-from utils.helpers import use_promo_code
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,45 +123,36 @@ async def process_promo_code(message: types.Message, state: FSMContext, locale):
     promo_code = message.text.strip().upper()
     
     # Пытаемся использовать промокод
-    result = use_promo_code(promo_code, message.from_user.id)
+    success, msg, duration_days = use_promo_code(message.from_user.id, promo_code)
     
     # Сбрасываем состояние
     await state.finish()
     
     kb = types.InlineKeyboardMarkup().add(
-        types.InlineKeyboardButton(text=user_locale.get("back_to_menu", "🔙 Назад в меню"), callback_data="back_to_main")
+        types.InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main")
     )
     
-    if result and result.get('success'):
+    if success:
         # Промокод успешно применен
-        days = result.get('duration_days', 0)
-        end_date = result.get('end_date').strftime("%d.%m.%Y") if result.get('end_date') else "неизвестно"
+        user = get_user(message.from_user.id)
+        end_date = user.premium_end_date.strftime("%d.%m.%Y") if user and user.premium_end_date else "неизвестно"
         
-        await message.answer(
-            user_locale.get("promo_code_success", "").format(days=days, date=end_date),
-            reply_markup=kb
-        )
+        success_text = f"✅ Промокод успешно активирован!\n💎 Премиум статус активирован на {duration_days} дней.\n📅 Дата окончания: {end_date}"
+        await message.answer(success_text, reply_markup=kb)
     else:
-        # Произошла ошибка при активации промокода
-        error_code = result.get('error_code') if result else 'unknown'
-        
-        if error_code == 'not_found':
-            error_message = user_locale.get("promo_code_not_found", f"❌ Промокод {promo_code} не найден.")
-        elif error_code == 'expired':
-            error_message = user_locale.get("promo_code_expired", f"❌ Срок действия промокода {promo_code} истек.")
-        elif error_code == 'used':
-            error_message = user_locale.get("promo_code_used", f"❌ Вы уже использовали промокод {promo_code}.")
-        elif error_code == 'limit_reached':
-            error_message = user_locale.get("promo_code_limit", f"❌ Лимит использования промокода {promo_code} исчерпан.")
-        elif error_code == 'inactive':
-            error_message = user_locale.get("promo_code_inactive", f"❌ Промокод {promo_code} неактивен.")
+        # Определяем тип ошибки по сообщению
+        if "уже использовали" in msg:
+            error_message = "❌ Вы уже использовали этот промокод."
+        elif "неактивен" in msg:
+            error_message = "❌ Этот промокод неактивен."
+        elif "истек" in msg:
+            error_message = "❌ Срок действия промокода истек."
+        elif "максимальное число" in msg:
+            error_message = "❌ Лимит использования промокода исчерпан."
         else:
-            error_message = user_locale.get("promo_code_error", f"❌ Произошла ошибка при активации промокода {promo_code}.")
+            error_message = "❌ Промокод не найден."
         
-        await message.answer(
-            error_message,
-            reply_markup=kb
-        )
+        await message.answer(error_message, reply_markup=kb)
 
 async def process_cancel_promo(callback: types.CallbackQuery, state: FSMContext, locale):
     """Обработчик для отмены ввода промокода"""
